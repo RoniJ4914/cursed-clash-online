@@ -60,9 +60,9 @@ let cinematic=null,cinematicT=0,domainDuel=null,domainCast=null;
 let players=[],score=[0,0],paused=false,gameOver=false,intermission=0,elapsed=0,shake=0,lastTime=0,notice='',noticeTTL=0,round=1,domainSeq=0;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),mix=(a,b,t)=>a+(b-a)*t,random=(a,b)=>a+Math.random()*(b-a);
 const col=p=>roster[p.char].color,other=p=>players[1-p.id],near=(a,b,r=110)=>Math.abs(a.x-b.x)<r&&Math.abs(a.y-b.y)<120;
-function fighter(i,type,previous){return {id:i,char:type,x:i?845:255,y:FLOOR,vx:0,vy:0,dir:i?-1:1,hp:100,ce:100,meter:previous?previous.meter:0,awake:0,awakUsed:false,ultUsed:false,cool:[0,0,0,0],ultCD:0,domainCD:0,punchCD:0,dashCD:0,comboLock:0,comboChain:0,comboDecay:0,linkUsed:false,linkCount:0,linkConfirm:0,hitOwner:-1,hitLink:0,burstCD:0,guard:false,stun:0,slow:0,inv:0,pose:0,flash:0,hitCount:0,comboTime:0,soul:0,entropy:0,barrier:0,counter:0,morph:0,adapt:0,shadowBuff:0,domainObj:null,bfWindow:0,bfTarget:-1,bfCD:0,bfHits:0,bfChain:0,bfChainTimer:0,passiveStacks:0,passiveTimer:0,passiveReady:0,queuedPunch:0,spamHeat:0,spamLock:0,spamLastKey:'',spamLastTime:-100,spamMisses:0,enderLock:0,launchDrift:0,comboScript:null,comboRecovery:0,massStacks:0,signature:0,signatureWindow:0,signatureCooldown:0,signatureReady:false,moveCommit:0,animKind:'idle',animSkill:0,animTime:0,animDuration:0};}
+function fighter(i,type,previous){return {id:i,char:type,x:i?845:255,y:FLOOR,vx:0,vy:0,dir:i?-1:1,hp:100,ce:100,meter:previous?previous.meter:0,awake:0,awakUsed:false,ultUsed:false,cool:[0,0,0,0],ultCD:0,domainCD:0,punchCD:0,dashCD:0,comboLock:0,comboChain:0,comboDecay:0,linkUsed:false,linkCount:0,linkConfirm:0,hitOwner:-1,hitLink:0,burstCD:0,guard:false,stun:0,slow:0,inv:0,pose:0,flash:0,hitCount:0,comboTime:0,soul:0,entropy:0,barrier:0,counter:0,morph:0,adapt:0,shadowBuff:0,domainObj:null,bfWindow:0,bfTarget:-1,bfCD:0,bfHits:0,bfChain:0,bfChainTimer:0,passiveStacks:0,passiveTimer:0,passiveReady:0,queuedPunch:0,spamHeat:0,spamLock:0,spamLastKey:'',spamLastTime:-100,spamMisses:0,enderLock:0,launchDrift:0,comboScript:null,comboRecovery:0,massStacks:0,ragdoll:0,ragdollAngle:0,ragdollSpin:0,ragdollBounces:0,grounded:0,yujiBFRemaining:0,yujiOneM1:0,yukiGravityCD:0,signature:0,signatureWindow:0,signatureCooldown:0,signatureReady:false,moveCommit:0,animKind:'idle',animSkill:0,animTime:0,animDuration:0};}
 function msg(text,duration=1.9){notice=text;noticeTTL=duration;document.getElementById('status').textContent=text;}
-const passiveNames={gojo:'Six Eyes: accurate strikes and CE efficiency',sukuna:'King of Curses: low-health resilience and execution energy',megumi:'Shadow Follow-through: bonus damage to stunned enemies',mahito:'Soul Integrity: resists ordinary hits; soul attacks heal slightly',yuji:'Black Flash Flow: chain successful timed BFs for escalating power',yuta:'Rika Resonance: boosted damage while Rika is active',hakari:'Fever Momentum: every eight landed hits restores a little CE; Jackpot boosts damage',yuki:'Bom Ba Ye: connected hits build up to 3 Mass stacks; Mass Punch and Meteor Fist consume them for bonus damage. Garuda controls space.'};
+const passiveNames={gojo:'Six Eyes: accurate strikes and CE efficiency',sukuna:'King of Curses: low-health resilience and execution energy',megumi:'Shadow Follow-through: bonus damage to stunned enemies',mahito:'Soul Integrity: resists ordinary hits; soul attacks heal slightly',yuji:'Black Flash Flow: up to 4 point-blank Black Flashes with no knockback; afterward, ONE M1 only',yuta:'Rika Resonance: boosted damage while Rika is active',hakari:'Fever Momentum: every eight landed hits restores a little CE; Jackpot boosts damage',yuki:'Star Rage: landed attacks build Mass stacks to empower Meteor Mass Fist; Garuda helps control the battlefield.'};
 function refreshDescription(){for(let i=0;i<2;i++){const r=roster[document.getElementById('char'+i).value]||roster.gojo;document.getElementById('desc'+i).textContent='PASSIVE: '+passiveNames[document.getElementById('char'+i).value]+' | Signature: Guard + Dash at 100% signature | Base: '+r.base.join(' · ')+' | Awakened: '+r.aw.join(' · ')+' | Ultimate: '+r.ult;}}
 
 function refreshComboGuide(){
@@ -134,8 +134,23 @@ function drawCinematicOverlay(){
 }
 
 function flashBehind(p,color,n=5){for(let j=0;j<n;j++)afterimages.push({x:p.x-p.dir*12*j,y:p.y,ttl:.34-j*.035,color});}
+// Knockdown: one shared physics state, rendered as a tumbling fighter. Heavy blows,
+// M1 finishers, regular Black Flashes and ultimates can launch victims.
+function ragdollFighter(q,vx=420,vy=-260,seconds=1.05){
+ if(!q||q.hp<=0)return;
+ q.ragdoll=Math.max(q.ragdoll,seconds);q.grounded=0;
+ q.ragdollSpin=(vx>=0?1:-1)*(4.6+Math.min(6,Math.abs(vx)/180));
+ q.vx=vx;q.vy=vy;q.stun=Math.max(q.stun,seconds);
+ q.guard=false;q.queuedPunch=0;q.moveCommit=0;q.comboScript=null;
+}
+function ragdollCanBeHit(q,options={}){
+ if(q.ragdoll<=0)return true;
+ // Ground-hitting attacks: down slams, Black Flash, ultimates,
+ // heavy beams/explosions, and explicitly ground-enabled abilities.
+ return !!(options.groundHit||options.blackflash||options.finisher||options.pierce||options.sure||options.dot||options.heavy||options.slam);
+}
 function damage(p,q,amount,knock=330,options={}){
- if(!p||!q||gameOver||intermission>0||q.hp<=0)return false;
+ if(!p||!q||gameOver||intermission>0||q.hp<=0||!ragdollCanBeHit(q,options))return false;
  if(q.inv>0&&!options.sure&&!options.pierce)return false;
  let shield= q.barrier>0&&!options.pierce&&!options.sure;
  let front= Math.sign(p.x-q.x)===q.dir;
@@ -167,6 +182,11 @@ function damage(p,q,amount,knock=330,options={}){
   q.bfWindow=0;
   if(chain){q.comboLock=Math.min(4,q.comboLock+1);q.comboDecay=1.35;}
   q.vx=p.dir*knock;q.vy=knock>480?-205:q.vy;
+  if(options.ragdoll||options.blackflash||options.slam||options.uppercut||options.heavy||options.finisher==='ultimate'||knock>=820){
+   const duration=options.uppercut?1.30:options.slam?1.12:Math.min(1.38,.73+knock/1800);
+   const vy=options.slam?Math.max(780,Math.abs(q.vy)):options.uppercut?-1040:-Math.max(260,Math.min(640,knock*.55));
+   ragdollFighter(q,p.dir*(options.slam?215:knock),vy,duration);
+  }
  }else if(block)q.vx=p.dir*65;
  if(!options.dot&&!block&&dealt>0){
   p.signature=clamp(p.signature+(options.combo?13:9),0,100);
@@ -180,7 +200,9 @@ function damage(p,q,amount,knock=330,options={}){
  if(!options.dot&&dealt>0){
    if(p.char==='gojo')p.ce=clamp(p.ce+Math.min(1.8,dealt*.10),0,100);
    if(p.char==='sukuna'&&q.hp<50)p.ce=clamp(p.ce+Math.min(2.2,dealt*.15),0,100);
-   if(p.char==='yuki'&&!options.dot&&!block&&dealt>0){p.massStacks=Math.min(3,p.massStacks+1);if(p.massStacks===3&&p.passiveReady<=0){floater(p.x,p.y-186,'STAR RAGE ×3','#ffe6ad',16);p.passiveReady=2;}}
+   if(p.char==='yuki'&&!options.dot&&!block&&dealt>0){
+     p.massStacks=Math.min(3,p.massStacks+1);
+   }
    if(p.char==='hakari'&&p.jackpot<=0){p.passiveStacks=(p.passiveStacks+1)%8;if(p.passiveStacks===0)p.ce=clamp(p.ce+6,0,100);}
    if(p.char==='mahito'&&options.soul)p.hp=clamp(p.hp+Math.min(2,dealt*.10),0,100);
  }
@@ -294,9 +316,9 @@ function tickYukiFX(dt){
    }
    if(f.x<20||f.x>W-20)f.t=Math.min(f.t,.15);
   }
-  if(f.type==='well'&&intermission<=0&&q.hp>0){
+  if(f.type==='well'&&!f.visualOnly&&intermission<=0&&q.hp>0){
    const dx=f.x-q.x,dy=f.y-(q.y-80);
-   if(Math.hypot(dx,dy)<f.radius+85){q.vx+=clamp(dx*8,-1400,1400)*dt;q.slow=Math.max(q.slow,.25);
+   if(Math.hypot(dx,dy)<f.radius+(f.passiveHole?420:85)){q.vx+=clamp(dx*(f.passiveHole?18:8),-2400,2400)*dt;if(f.passiveHole){q.vy+=clamp(dy*13,-1400,1400)*dt;q.ragdoll=Math.max(q.ragdoll,.24);}q.slow=Math.max(q.slow,.25);
     f.tick-=dt;if(f.tick<=0){f.tick=.43;yukiHit(p,q,3.7,0,{dot:true,noMeter:true,stun:0});}
    }
   }
@@ -747,7 +769,7 @@ function startFinisher(p,q,kind){
  const aerial=q.y<FLOOR-48||p.y<FLOOR-48,ascending=p.vy< -130;
  const variant=p.char==='yuji'?(aerial?(ascending?'risingBlackFlash':'divingBlackFlash'):'groundBlackFlash'):
  p.char==='gojo'?'honoredOne':p.char==='sukuna'?'cleaveExecution':p.char==='megumi'?'divineDogs':
- p.char==='mahito'?'soulTouch':p.char==='yuta'?'rikaFinish':p.char==='yuki'?'starRageExecution':'jackpotRush';
+ p.char==='mahito'?'soulTouch':p.char==='yuta'?'rikaFinish':p.char==='yuki'?'starRageBlackHole':'jackpotRush';
  // 4.3 real-time seconds, rendered on the living arena sprites and the actual defeated opponent.
  cinematic={owner:p.id,victim:q.id,char:p.char,kind,variant,life:4.3,max:4.3,beat:0,
    originX:p.x,originY:p.y,targetX:q.x,targetY:q.y,dir:p.dir,
@@ -789,9 +811,23 @@ function finisherBeat(f,stage,p,q){
   sparks(cx,cy,stage===3?'#d3ffdf':'#77eec7',stage===3?44:16,stage===3?220:110);
   if(stage===3){f.soulBloom=2.05;floater(cx,cy-200,'IDLE TRANSFIGURATION','#b2ffe4',20);}
  } else if(f.char==='yuki'){
-  yukiFx(stage===3?'crater':'finisher',p,cx,cy,stage===3?3:1.5,{radius:stage===3?240:120,visualOnly:true});
-  if(stage===2)yukiFx('tether',p,cx,cy,1.4,{visualOnly:true});
-  sparks(cx,cy,stage===3?'#f7e8b5':'#4de1d1',stage===3?72:29,380);
+  if(stage===1){
+   yukiFx('impact',p,cx,cy,1.15,{radius:195,visualOnly:true});
+   sparks(cx,cy,'#f7e8b5',65,550);
+   floater(cx,cy-170,'BOM BA YE · MASS IMPACT','#f8dca0',21);
+  }else if(stage===2){
+   // The black hole belongs to the knockout cinematic, not the passive.
+   // visualOnly prevents additional damage or gameplay pulls from a cutscene effect.
+   f.holeX=clamp(f.targetX+f.dir*100,150,W-150);
+   f.holeY=clamp(FLOOR-165,120,FLOOR-90);
+   yukiFx('well',p,f.holeX,f.holeY,2.35,{radius:265,visualOnly:true});
+   floater(f.holeX,f.holeY-130,'STAR RAGE · BLACK HOLE','#7cebe0',22);
+   frameShake(19);
+  }else{
+   yukiFx('crater',p,f.holeX??cx,f.holeY??cy,1.7,{radius:295,visualOnly:true});
+   sparks(f.holeX??cx,f.holeY??cy,'#f7e8b5',95,530);
+   floater(f.holeX??cx,(f.holeY??cy)-150,'EVENT HORIZON · COLLAPSE','#fff0c4',22);
+  }
  } else if(f.char==='yuta'){
   if(stage===1)summon(p,'rika',{x:cx-dir*115,life:4.2,silent:true});
   slash(cx-dir*30,cy,stage===3?420:235,stage%2?-.72:.72,'#d7efff',1.45,stage===3?16:9);
@@ -851,8 +887,14 @@ function tickLiveFinisher(dt){
   q.x=clamp(tx+dir*(Math.sin(t*39)*25+180*big),35,W-35);
   q.y=clamp(FLOOR-35*Math.sin(t*TAU*3)**2-70*Math.sin(big*PI),80,FLOOR);
  }else if(f.char==='yuki'){
-  q.y=clamp(FLOOR-220*Math.sin(ease((t-.45)/.48)*PI),80,FLOOR);
-  q.x=clamp(tx+dir*(50*ease((t-.53)/.15)+225*big),35,W-35);
+  // First the victim is blasted far away; then the singularity pulls them back.
+  const blast=ease((t-.36)/.17),suction=ease((t-.54)/.25);
+  const farX=clamp(tx+dir*320,35,W-35);
+  const holeX=f.holeX??clamp(tx+dir*100,150,W-150);
+  const holeY=f.holeY??FLOOR-165;
+  q.x=mix(mix(tx,farX,blast),holeX,suction);
+  q.y=mix(FLOOR-125*Math.sin(blast*PI*.85),holeY+80,suction);
+  q.y=clamp(q.y,85,FLOOR);
  }else if(f.char==='yuta'){
   q.x=clamp(tx+dir*(Math.sin(t*TAU*3)*20+210*big),35,W-35);
  }else if(f.char==='hakari'){
@@ -907,46 +949,75 @@ function drawLiveFinisherFX(){if(!cinematic)return;const f=cinematic,t=1-f.life/
  ctx.fillStyle='#ffffff88';ctx.fillRect(W/2-175,219,350,5);ctx.fillStyle=accent;ctx.fillRect(W/2-175,219,350*t,5);
  ctx.font='700 13px system-ui';ctx.fillStyle='#e2e8ff';ctx.fillText(t<.35?'APPROACH':t<.70?'COMBINATION':t<.87?'FINAL IMPACT':'KNOCKOUT',W/2,248);
  ctx.restore();}
-function blackFlash(p){if(p.stun>0||p.bfCD>0||p.bfWindow<=0||intermission>0||gameOver)return;
- const q=other(p);p.bfWindow=0;p.bfCD=p.char==='yuji'&&p.bfChainTimer>0?1.8:4.5;
- if(q.hp<=0||Math.abs(q.x-p.x)>185){floater(p.x,p.y-150,'TIMING LOST','#f7a6b6',15);return;}
- p.bfHits++;p.ce=clamp(p.ce+12,0,100);if(p.awake<=0)p.meter=clamp(p.meter+(p.char==='yuji'?6:3),0,100);
- if(p.char==='yuji'){p.bfChain=p.bfChainTimer>0?Math.min(3,p.bfChain+1):1;p.bfChainTimer=7;floater(p.x,p.y-205,'BLACK FLASH FLOW ×'+p.bfChain,'#ffb5bb',18);}
-
+function blackFlash(p){
+ if(p.stun>0||p.bfCD>0||p.bfWindow<=0||intermission>0||gameOver)return;
+ const q=other(p);
+ if(q.hp<=0||Math.abs(q.x-p.x)>185){p.bfWindow=0;floater(p.x,p.y-150,'TIMING LOST','#f7a6b6',15);return;}
+ const yuji=p.char==='yuji',following=yuji&&p.yujiBFRemaining>0;
+ if(yuji){
+   if(!following){p.bfChain=0;p.yujiBFRemaining=3;p.yujiOneM1=0;}
+   else p.yujiBFRemaining--;
+   p.bfChain++;
+   p.bfChainTimer=7;
+ }else p.bfChain=0;
+ p.bfWindow=0;p.bfCD=yuji?0:4.5;
+ p.bfHits++;p.ce=clamp(p.ce+12,0,100);
+ if(p.awake<=0)p.meter=clamp(p.meter+(yuji?6:3),0,100);
  p.inv=.28;frameShake(26);q.inv=0;
- // The impact palette NEVER changes by character: crimson lightning and pitch-black sparks.
- // Character identity comes from the distinct animated strike choreography below.
  blackFlashScenes.push({char:p.char,x:q.x,y:q.y-77,originX:p.x,originY:p.y-78,dir:p.dir,life:.76,max:.76,seed:Math.random()*6.28});
  for(let i=0;i<11;i++){let a=i*TAU/11;slash(q.x+Math.cos(a)*38,q.y-77+Math.sin(a)*42,95,a+.8,i%3?'#080309':'#fb183d',.48,11);}
  sparks(q.x,q.y-77,'#050208',76,530);sparks(q.x,q.y-77,'#ef1736',44,430);
  for(let i=0;i<6;i++)arc(q.x,q.y-77,12+i*20,i%2?'#080208':'#f31c3b',.5+i*.065);
- floater(q.x,q.y-200,'BLACK FLASH ×'+p.bfHits,'#ffe7ea',25);
- damage(p,q,20+(p.char==='yuji'?Math.max(0,p.bfChain-1)*5:0),690,{unblockable:true,pierce:true,finisher:'blackflash'});
+ floater(q.x,q.y-200,yuji?'YUJI BLACK FLASH ×'+p.bfChain:'BLACK FLASH ×'+p.bfHits,'#ffe7ea',24);
+ const beforeX=q.x,beforeY=q.y;
+ const success=damage(p,q,yuji?(12+(p.bfChain-1)*2):20,yuji?0:690,{unblockable:true,pierce:true,blackflash:true,stun:yuji?.55:1.05,ragdoll:!yuji,finisher:'blackflash'});
+ if(yuji&&success&&q.hp>0){
+   // Yuji stays in striking range: no knockback or falling over.
+   q.x=beforeX;q.y=beforeY;q.vx=0;q.vy=0;q.ragdoll=0;q.ragdollAngle=0;
+   q.stun=Math.max(q.stun,.56);
+   p.punchCD=0;p.moveCommit=0;
+   if(p.yujiBFRemaining>0){p.bfWindow=.56;p.bfTarget=q.id;
+     floater(p.x,p.y-181,'B AGAIN · '+p.yujiBFRemaining+' LEFT','#ff9eaa',14);
+   }else{p.yujiOneM1=1;p.bfWindow=0;p.comboTime=0;p.hitCount=0;
+     floater(p.x,p.y-181,'FINAL BLACK FLASH · ONE M1 LEFT','#ffe2b7',14);
+   }
+ }
 }
+
 function punch(p){
- if(committed(p)||p.stun>0||p.guard||p.punchCD>0||intermission>0||gameOver)return false;
- const q=other(p),stage=p.comboTime>0?(p.hitCount%4)+1:1;
- const contact=near(p,q,108)&&(q.x-p.x)*p.dir>-32&&!q.inv;
+ if(committed(p)||p.stun>0||p.ragdoll>0||p.guard||p.punchCD>0||intermission>0||gameOver)return false;
+ const q=other(p),finalYujiM1=p.char==='yuji'&&p.yujiOneM1>0,stage=finalYujiM1?1:p.comboTime>0?(p.hitCount%4)+1:1;
+ const contact=near(p,q,finalYujiM1?150:108)&&(q.x-p.x)*p.dir>-32&&!q.inv&&!q.ragdoll;
  p.animKind='punch';p.animTime=.24;p.animDuration=.24;p.pose=.22;p.punchCD=stage===4?.72:.225;commitMove(p,stage===4?.45:.18);
  if(!contact||q.hp<=0){p.bfWindow=0;p.hitCount=0;p.comboTime=0;p.linkUsed=false;p.linkCount=0;return false;}
  if(stage===1){p.linkUsed=false;p.linkCount=0;}
- const finisher=stage===4,amount=finisher?12:stage===3?7:5.5;
+ const finisher=stage===4,amount=finalYujiM1?10:finisher?12:stage===3?7:5.5;
+ const c=controls[p.id];
+ const uppercut=finisher&&down.has(c.jump);
+ const slam=finisher&&!uppercut&&down.has(p.id===0?'s':'np2');
+ if(finalYujiM1){p.yujiOneM1=0;p.yujiBFRemaining=0;p.bfCD=4.5;p.bfChain=0;}
  // Do NOT advance a combo on blocked/parried hits.
  const tier=p.id===0?document.getElementById('comboTier').value:'medium';
  const stun=finisher?.72:tier==='easy'?.90:tier==='hard'?.57:.72;
- const dealt=damage(p,q,amount,finisher?790:stage===3?45:18,{stun,combo:true,ender:finisher});
+ const dealt=damage(p,q,amount,finisher?(slam?180:uppercut?170:790):stage===3?45:18,{stun,combo:true,ender:finisher,uppercut,slam,ragdoll:finisher});
  if(!dealt||q.guard){p.hitCount=0;p.comboTime=0;p.linkUsed=false;p.linkCount=0;p.bfWindow=0;return false;}
- p.queuedPunch=0;p.hitCount=stage;p.comboTime=finisher?0:1.0;p.bfWindow=.34;p.bfTarget=q.id;
+ p.queuedPunch=0;p.hitCount=stage;p.comboTime=finisher?0:1.0;p.bfWindow=finalYujiM1?0:.34;p.bfTarget=q.id;
+ if(finalYujiM1){p.hitCount=0;p.comboTime=0;p.punchCD=.8;p.moveCommit=.55;}
  if(!finisher&&q.hp>0){
    const ideal=clamp(p.x+p.dir*77,35,W-35);
    q.x=mix(q.x,ideal,.47);
    p.x=clamp(p.x+p.dir*4,35,W-35);
  }
  if(finisher){
-   p.enderLock=.71;q.launchDrift=.52;q.vx=p.dir*790;q.vy=-335;
+   p.enderLock=.71;q.launchDrift=.52;
+   q.vx=p.dir*(slam?190:uppercut?180:790);
+   q.vy=slam?850:uppercut?-1080:-400;
+   if(slam&&q.y>=FLOOR-2){q.y=FLOOR-35;q.vy=920;}
+   if(uppercut){q.y=Math.min(q.y,FLOOR-8);q.ragdoll=Math.max(q.ragdoll,1.4);}
+   if(slam)q.ragdoll=Math.max(q.ragdoll,1.1);
    q.hitLink=Math.max(q.hitLink,.78);p.linkUsed=false;p.comboRecovery=.71;
    combatEffect('ender',q.x,q.y-85,p.dir,p.char,1.4);
-   slash(q.x,q.y-85,195,-.4,col(p),.6,12);arc(q.x,q.y-85,18,col(p),.4);floater(q.x,q.y-170,'FOURTH HIT · WALL SEND','#fff0aa',15);}
+   slash(q.x,q.y-85,195,-.4,col(p),.6,12);arc(q.x,q.y-85,18,col(p),.4);floater(q.x,q.y-170,slam?'DOWN SLAM!':uppercut?'UPPERCUT!':'FOURTH HIT · WALL SEND','#fff0aa',15);}
  else{slash(q.x+p.dir*8,q.y-78,95,stage%2?.55:-.55,col(p),.28,6);floater(p.x,p.y-162,stage+' HIT'+(stage>1?' COMBO':''),'#cbd6ff',13);if(stage===2||stage===3)floater(p.x,p.y-194,({gojo:'1 BLUE / 2 RED',sukuna:'1 SLASH / 2 CLEAVE',megumi:'2 TOAD / 4 UPPERCUT',yuji:'1 ECHO / 2 KICK',yuta:'2 RIKA / 3 SPEECH',hakari:'2 DOORS / 3 TRAIN',mahito:'1 SOUL / 3 BLADE'})[p.char],'#ffe6ab',12);}
  return true;
 }
@@ -1038,6 +1109,7 @@ function action(p,key){
    else {floater(p.x,p.y-175,'LAND M1 FIRST','#ffb3bc',12);}
    return;
  }
+ if(p.ragdoll>0)return;
  if(committed(p))return;
  if(penalizeMash(p,key))return;
  // Absolute combat lock: no attacks, Black Flash, skills, jumps, awakenings or
@@ -1142,7 +1214,7 @@ function tickAI(dt){
  brain.breath=Math.max(0,(brain.breath||0)-dt);
  brain.guardTime=Math.max(0,(brain.guardTime||0)-dt);
  brain.comboPlan=Math.max(0,(brain.comboPlan||0)-dt);
- if(p.stun>0){brain.move=0;brain.guard=false;brain.comboPlan=0;brain.bfDelay=-1;
+ if(p.stun>0||p.ragdoll>0){brain.move=0;brain.guard=false;brain.comboPlan=0;brain.bfDelay=-1;
    if(p.burstCD<=0&&p.ce>=35&&p.hp<35&&Math.random()<dt*(difficulty==='hard'?.65:.25))action(p,controls[1].dash);return;}
  if(p.bfWindow<=0)brain.bfChecked=false;
  if(p.bfWindow>0&&p.bfCD<=0&&!brain.bfChecked){
@@ -1247,9 +1319,18 @@ function tick(dt){if(paused)return;
  for(let j=combatFX.length-1;j>=0;j--){combatFX[j].t-=dt;if(combatFX[j].t<=0)combatFX.splice(j,1);}
  tickYukiFX(dt);for(let j=signatureFX.length-1;j>=0;j--){signatureFX[j].t-=dt;if(signatureFX[j].t<=0)signatureFX.splice(j,1);}
  if(intermission>0){if(!cinematic){actors.length=0;fields.length=0;projectiles.length=0;beams.length=0;}intermission-=dt;if(intermission<=0&&!gameOver)nextRound();return;}if(gameOver){if(!cinematic){actors.length=0;fields.length=0;projectiles.length=0;beams.length=0;}return;}
- for(const p of players){let q=other(p),c=controls[p.id];p.dir=q.x>=p.x?1:-1;p.ce=clamp(p.ce+9*dt,0,100);p.cool=p.cool.map(v=>Math.max(0,v-dt));for(const k of ['ultCD','domainCD','punchCD','dashCD','stun','slow','inv','pose','flash','comboTime','barrier','counter','morph','adapt','entropy','bfWindow','bfCD','bfChainTimer','enderLock','launchDrift','comboRecovery','moveCommit','signatureWindow','signatureCooldown','spamLock','passiveTimer','passiveReady','comboDecay','burstCD','hitLink','linkConfirm','queuedPunch','animTime'])p[k]=Math.max(0,p[k]-dt);if(p.comboDecay<=0)p.comboLock=0;if(p.comboTime<=0){p.linkUsed=false;p.linkCount=0;}p.awake=Math.max(0,p.awake-dt);if(p.awake>0&&Math.random()<dt*23)sparks(p.x+random(-24,24),p.y-random(40,135),'#ffe0a0',1,100);
+ for(const p of players){let q=other(p),c=controls[p.id];p.dir=q.x>=p.x?1:-1;p.ce=clamp(p.ce+9*dt,0,100);p.cool=p.cool.map(v=>Math.max(0,v-dt));for(const k of ['ultCD','domainCD','punchCD','dashCD','stun','slow','inv','pose','flash','comboTime','barrier','counter','morph','adapt','entropy','bfWindow','bfCD','bfChainTimer','enderLock','launchDrift','comboRecovery','moveCommit','yukiGravityCD','ragdoll','grounded','signatureWindow','signatureCooldown','spamLock','passiveTimer','passiveReady','comboDecay','burstCD','hitLink','linkConfirm','queuedPunch','animTime'])p[k]=Math.max(0,p[k]-dt);if(p.comboDecay<=0)p.comboLock=0;if(p.comboTime<=0){p.linkUsed=false;p.linkCount=0;}p.awake=Math.max(0,p.awake-dt);if(p.awake>0&&Math.random()<dt*23)sparks(p.x+random(-24,24),p.y-random(40,135),'#ffe0a0',1,100);
  p.spamHeat=Math.max(0,p.spamHeat-dt*2.8);if(p.spamHeat<.2)p.spamMisses=0;
- p.guard=(p.id===1&&!pvp()?brain.guard:down.has(c.guard))&&p.stun<=0;const move=p.id===1&&!pvp()?brain.move:((down.has(c.right)?1:0)-(down.has(c.left)?1:0));let modifier=p.guard?.35:1;if(p.slow>0)modifier*=.42;let v=p.stun>0?0:move*325*modifier;if(p.launchDrift>0){p.vx*=Math.max(.91,1-dt*.32);}else p.vx+=(v-p.vx)*Math.min(1,dt*(p.stun>0?3.7:11));p.vy+=1850*dt;p.x=clamp(p.x+p.vx*dt,35,W-35);p.y+=p.vy*dt;if(p.y>=FLOOR){p.y=FLOOR;p.vy=0;}
+ p.guard=(p.id===1&&!pvp()?brain.guard:down.has(c.guard))&&p.stun<=0&&p.ragdoll<=0;const move=p.id===1&&!pvp()?brain.move:((down.has(c.right)?1:0)-(down.has(c.left)?1:0));let modifier=p.guard?.35:1;if(p.slow>0)modifier*=.42;let v=p.stun>0||p.ragdoll>0?0:move*325*modifier;if(p.launchDrift>0||p.ragdoll>0){p.vx*=Math.max(.91,1-dt*.32);}else p.vx+=(v-p.vx)*Math.min(1,dt*(p.stun>0?3.7:11));p.vy+=1850*dt;
+ if(p.ragdoll>0){p.ragdollAngle+=p.ragdollSpin*dt;p.ragdollSpin*=Math.pow(.986,dt*60);}
+ else p.ragdollAngle+=(0-p.ragdollAngle)*Math.min(1,dt*12);
+ p.x=clamp(p.x+p.vx*dt,35,W-35);p.y+=p.vy*dt;
+ if(p.y>=FLOOR){p.y=FLOOR;
+   if(p.ragdoll>0&&p.vy>300&&p.ragdollBounces<2){
+     sparks(p.x,FLOOR-6,'#d1c8a8',14,185);arc(p.x,FLOOR-9,15,'#fff2d4',.33);
+     frameShake(7);p.ragdollBounces++;p.vy=-Math.min(310,p.vy*.20);p.vx*=.68;
+   }else{p.vy=0;p.ragdollBounces=0;if(p.ragdoll>0){p.ragdollAngle=p.dir*PI*.47;p.grounded=Math.max(p.grounded,.18);}}
+ }
  if((p.id===0||pvp())&&p.queuedPunch>0&&!committed(p)&&p.punchCD<=0&&p.stun<=0&&p.comboTime>0&&p.hitCount>0){p.queuedPunch=0;punch(p);}
  if(p.stun<=0&&p.char==='gojo'&&p.counter>0&&near(p,q,112)&&q.pose>0){p.x=clamp(q.x-p.dir*90,35,W-35);damage(p,q,24,555,{unblockable:true});p.counter=0;p.barrier=0;floater(q.x,q.y-174,'COUNTERED','#a5dcff',19);sparks(q.x,q.y-90,'#d3f2ff',50,350);}
  }
@@ -1358,7 +1439,9 @@ const spriteDesign={
 };
 function drawSprite(p){
  const d=spriteDesign[p.char],char=p.char;
- ctx.save();ctx.translate(p.x,p.y);ctx.scale(p.dir,1);
+ ctx.save();ctx.translate(p.x,p.y);
+ if(p.ragdoll>0||Math.abs(p.ragdollAngle)>.04){ctx.translate(0,-76);ctx.rotate(p.ragdollAngle);ctx.translate(0,76);}
+ ctx.scale(p.dir,1);
  if(p.comboScript){const v=p.comboScript;ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=.34;ctx.strokeStyle=roster[p.char].secondary;ctx.lineWidth=3;for(let k=0;k<3;k++){ctx.beginPath();ctx.ellipse(0,-76,54+k*11,83+k*9,v.time*4+k*.7,0,TAU);ctx.stroke();}ctx.restore();}
  if(p.inv>0&&Math.floor(elapsed*18)%2===0)ctx.globalAlpha=.53;
  const running=Math.abs(p.vx)>45&&p.stun<=0,air=p.y<FLOOR-3,walk=Math.sin(elapsed*15+ p.x*.012),bob=running?Math.abs(walk)*2.4:Math.sin(elapsed*3+p.id)*1.3;
@@ -1367,6 +1450,7 @@ function drawSprite(p){
  let lArm=[-29,-61],rArm=[29,-61],lLeg=[-16,0],rLeg=[16,0],torsoTilt=0,headTilt=0,attackAngle=0;
  if(running){lLeg=[-17+walk*13,-4];rLeg=[17-walk*13,-4];lArm=[-34-walk*12,-57];rArm=[34+walk*12,-57];torsoTilt=walk*.045;}
  if(air){lLeg=[-25,-18];rLeg=[19,-7];torsoTilt=-.11;}
+ if(p.ragdoll>0){lLeg=[-23,-17];rLeg=[22,-13];lArm=[-45,-38];rArm=[43,-35];torsoTilt=-.28;}
  if(p.stun>0){torsoTilt=-.22;lArm=[-38,-39];rArm=[39,-42];headTilt=-.1;}
  if(p.castingDomain){lArm=[-11,-113];rArm=[12,-113];lLeg=[-18,0];rLeg=[18,0];torsoTilt=0;headTilt=-.08;}
  if(p.guard){lArm=[-4,-100];rArm=[28,-103];torsoTilt=-.055;}
@@ -1668,7 +1752,7 @@ $cc('ccFullscreen').onclick=()=>{if(!document.fullscreenElement){document.docume
 $cc('ccLeave').onclick=()=>{if(onlineActive())closeOnline();paused=true;showMenu();};
 if(new URLSearchParams(location.search).has('room')){$cc('ccRoomInput').value=(new URLSearchParams(location.search).get('room')||'').toUpperCase();}
 
-function keydown(e){const key=inputKey(e);if(onlineGuest()){if(onlineGuestInput(key,true)){e.preventDefault();return;}return;}if(onlineHost()&&onlineStreaming&&key.startsWith("np"))return;const isP2=Object.values(controls[1]).some(v=>Array.isArray(v)?v.includes(key):v===key);const isP1=Object.values(controls[0]).some(v=>Array.isArray(v)?v.includes(key):v===key);if(!isP1&&!isP2&&!(domainDuel&&(['w','a','s','d'].includes(key)||(pvp()&&['np8','np4','np2','np6'].includes(key)))))return;const element=document.activeElement;if(element&&['SELECT','BUTTON','INPUT','TEXTAREA'].includes(element.tagName))return;if(key.startsWith('np')||key.startsWith('arrow'))e.preventDefault();if(!down.has(key)){down.add(key);if(!paused){if(domainDuel)duelKey(key);else if(pvp())action(players[isP2?1:0],key);else if(isP1)action(players[0],key);}}}
+function keydown(e){const key=inputKey(e);if(onlineGuest()){if(onlineGuestInput(key,true)){e.preventDefault();return;}return;}if(onlineHost()&&onlineStreaming&&key.startsWith("np"))return;const isP2=Object.values(controls[1]).some(v=>Array.isArray(v)?v.includes(key):v===key);const isP1=Object.values(controls[0]).some(v=>Array.isArray(v)?v.includes(key):v===key);if(!isP1&&!isP2&&key!=='s'&&key!=='np2'&&!(domainDuel&&(['w','a','s','d'].includes(key)||(pvp()&&['np8','np4','np2','np6'].includes(key)))))return;const element=document.activeElement;if(element&&['SELECT','BUTTON','INPUT','TEXTAREA'].includes(element.tagName))return;if(key.startsWith('np')||key.startsWith('arrow'))e.preventDefault();if(!down.has(key)){down.add(key);if(!paused){if(domainDuel)duelKey(key);else if(pvp())action(players[isP2?1:0],key);else if(isP1)action(players[0],key);}}}
 window.addEventListener('keydown',keydown);window.addEventListener('keyup',e=>{const k=inputKey(e);if(onlineGuest()){if(onlineGuestInput(k,false))e.preventDefault();return;}down.delete(k);});window.addEventListener('blur',()=>{if(onlineGuest()&&onlineStreaming)onlineSend({type:'releaseAll'});down.clear();});
 document.getElementById('gameMode').addEventListener('change',()=>{document.getElementById('difficulty').disabled=pvp();newMatch();msg(pvp()?'LOCAL VERSUS — BOTH PLAYERS READY':'SOLO PvE — AI READY',2.5);});
 document.getElementById('charge').addEventListener('click',()=>{players[0].meter=100;if(pvp())players[1].meter=100;msg(pvp()?'BOTH METERS CHARGED — R / P TO AWAKEN':'YOUR METER CHARGED · PRESS R TO AWAKEN',2.6);canvas.focus();});
@@ -1678,4 +1762,5 @@ document.getElementById('comboTier').addEventListener('change',()=>{refreshCombo
 window.__cursedClashTest={getState:()=>({score:score.slice(),round,paused,gameOver,intermission,elapsed,domainCast:domainCast?{elapsed:domainCast.elapsed,casters:domainCast.casters.slice()}:null,domainDuel:domainDuel?{index:domainDuel.index,correct:domainDuel.correct,aiCorrect:domainDuel.aiCorrect,remaining:domainDuel.remaining,sequence:domainDuel.sequence.slice()}:null,finisher:cinematic?.variant||null,finisherRemaining:cinematic?.life||0,finisherBeat:cinematic?.beat||0,mode:pvp()?'pvp':'ai',error:document.getElementById('errors').textContent,players:players.map(p=>({char:p.char,x:p.x,y:p.y,hp:p.hp,meter:p.meter,awake:p.awake,domain:p.domainObj?.remaining||0,ultCD:p.ultCD,ultUsed:p.ultUsed,comboLock:p.comboLock,hitCount:p.hitCount,enderLock:p.enderLock,launchDrift:p.launchDrift,comboArt:p.comboScript?.name||null,comboTime:p.comboTime,hitOwner:p.hitOwner,linkUsed:p.linkUsed,linkCount:p.linkCount,stun:p.stun,burstCD:p.burstCD,bfHits:p.bfHits,queuedPunch:p.queuedPunch,skills:p.cool.slice()})),aiBlackFlashesThisRound:brain.bfUsed,comboTier:document.getElementById('comboTier').value,actorKinds:actors.map(a=>a.kind),activeZones:fields.map(f=>f.type),beams:beams.map(b=>b.type)}),trigger:(i,key)=>action(players[i],key),debugClash:()=>{players.forEach(p=>{p.meter=100;p.stun=0;p.ce=100;p.domainCD=0;p.domainObj=null;awaken(p);p.inv=0;});domain(players[0]);domain(players[1]);return !!domainCast||!!domainDuel;},debugSetup:(opts={})=>{const a=players[opts.attacker??0],b=other(a);a.x=350;b.x=425;a.y=b.y=FLOOR;a.vx=a.vy=b.vx=b.vy=0;a.dir=1;b.dir=-1;a.ce=100;b.ce=100;a.punchCD=0;b.punchCD=0;a.stun=b.stun=0;a.inv=b.inv=0;a.cool=[0,0,0,0];b.guard=false;brain.guard=false;brain.breath=2;brain.decision=1;return true;},testKO:(i)=>damage(players[i],players[1-i],200,0,{unblockable:true,pierce:true})};
 newMatch();paused=true;requestAnimationFrame(loop);
 })();
-</script></body></html>
+</script><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
+</body></html>
