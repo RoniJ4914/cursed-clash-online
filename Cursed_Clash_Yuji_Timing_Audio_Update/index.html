@@ -213,7 +213,7 @@ function damage(p,q,amount,knock=330,options={}){
   if(p.awake<=0)p.meter=clamp(p.meter+dealt*.38+(block?.08:0),0,100);
   if(q.awake<=0)q.meter=clamp(q.meter+dealt*.16,0,100);
  }
- if(q.hp<=0){if(!cinematic)startFinisher(p,q,options.finisher||'knockout');score[p.id]++;intermission=Math.max(intermission,4.8);frameShake(24);sparks(q.x,q.y-85,'#ffe69a',90,510);for(let i=0;i<14;i++)slash(q.x+random(-80,80),q.y-random(0,180),random(90,300),random(-2.6,2.6),'#fff5b0',.8);for(const f of players)f.domainObj=null;if(score[p.id]>=3){gameOver=true;msg('PLAYER '+(p.id+1)+' WINS THE MATCH!',999);}else msg('KNOCKOUT! · '+score[0]+' — '+score[1],2.2);}
+ if(q.hp<=0){if(!cinematic)startFinisher(p,q,options.finisher||'knockout');score[p.id]++;intermission=Math.max(intermission,cinematic?.variant==='fourthBlackFlashSecret'?28.4:4.8);frameShake(24);sparks(q.x,q.y-85,'#ffe69a',90,510);for(let i=0;i<14;i++)slash(q.x+random(-80,80),q.y-random(0,180),random(90,300),random(-2.6,2.6),'#fff5b0',.8);for(const f of players)f.domainObj=null;if(score[p.id]>=3){gameOver=true;msg('PLAYER '+(p.id+1)+' WINS THE MATCH!',999);}else msg('KNOCKOUT! · '+score[0]+' — '+score[1],2.2);}
  return true;
 }
 function projectile(p,type,speed,amt,radius,opts={}){let y=p.y-(opts.height||75);projectiles.push({owner:p.id,type,x:p.x+p.dir*40,y,vx:p.dir*speed,vy:opts.vy||0,r:radius,dmg:amt,t:opts.life||2.0,max:opts.life||2,penetrate:!!opts.penetrate,hit:false,turn:opts.turn||0,color:opts.color||col(p)});sparks(p.x+p.dir*38,y,opts.color||col(p),15,240);}
@@ -772,13 +772,13 @@ function startFinisher(p,q,kind){
  p.char==='gojo'?'honoredOne':p.char==='sukuna'?'cleaveExecution':p.char==='megumi'?'divineDogs':
  p.char==='mahito'?'soulTouch':p.char==='yuta'?'rikaFinish':p.char==='yuki'?'starRageBlackHole':'jackpotRush';
  // 4.3 real-time seconds, rendered on the living arena sprites and the actual defeated opponent.
- cinematic={owner:p.id,victim:q.id,char:p.char,kind,variant,life:4.3,max:4.3,beat:0,
+ cinematic={owner:p.id,victim:q.id,char:p.char,kind,variant,life:variant==='fourthBlackFlashSecret'?28:4.3,max:variant==='fourthBlackFlashSecret'?28:4.3,beat:0,
    originX:p.x,originY:p.y,targetX:q.x,targetY:q.y,dir:p.dir,
    trails:[],impactMarks:[],soulThreads:[],victimX:q.x,victimY:q.y};
- intermission=Math.max(intermission,4.8);p.vx=p.vy=q.vx=q.vy=0;
- p.animKind='ultimate';p.animDuration=4.3;p.animTime=4.3;
- q.animKind='hurt';q.animDuration=4.3;q.animTime=4.3;
- frameShake(9);msg(roster[p.char].name.toUpperCase()+' · FINISHER!',4.3);
+ intermission=Math.max(intermission,variant==='fourthBlackFlashSecret'?28.4:4.8);p.vx=p.vy=q.vx=q.vy=0;
+ p.animKind='ultimate';p.animDuration=cinematic.max;p.animTime=cinematic.max;
+ q.animKind='hurt';q.animDuration=cinematic.max;q.animTime=cinematic.max;
+ frameShake(9);msg(roster[p.char].name.toUpperCase()+' · FINISHER!',cinematic.max);
 }
 function finisherBeat(f,stage,p,q){
  const cx=q.x,cy=q.y-80,dir=f.dir;
@@ -845,6 +845,7 @@ function tickLiveFinisher(dt){
  const f=cinematic;if(!f)return;
  f.life=Math.max(0,f.life-dt);const t=1-f.life/f.max;
  const p=players[f.owner],q=players[f.victim];if(!p||!q){cinematic=null;return;}
+ if(f.variant==='fourthBlackFlashSecret'){tickYuji28(f,dt,p,q);return;}
  const dir=f.dir,tx=clamp(f.targetX,115,W-115), ease=v=>{v=clamp(v,0,1);return v*v*(3-2*v);};
  p.dir=dir;q.dir=-dir;p.vx=p.vy=q.vx=q.vy=0;
  p.animTime=Math.max(0,p.animTime-dt);q.animTime=Math.max(0,q.animTime-dt);
@@ -912,9 +913,120 @@ function tickLiveFinisher(dt){
  if(t>=.53&&f.beat<2)finisherBeat(f,2,p,q);
  if(t>=.72&&f.beat<3)finisherBeat(f,3,p,q);
  if(t>=.87&&f.beat<4){f.beat=4;frameShake(12);sparks(q.x,q.y-30,'#ffedbd',44,330);arc(q.x,q.y-40,72,'#fff5cc',1);}
- if(f.life<=0)cinematic=null;
+ if(f.life<=0){cinematic=null;if(f.secretYuji)stopYujiSecretAudio();}
+}
+// 28-second Black Flash knockout: bespoke real-time storyboard, not the generic 4.3s KO.
+// Timing is tied to the trimmed 28-second audio on the host whenever playback is available.
+function tickYuji28(f,dt,p,q){
+ if(yujiSecretTrack&&!yujiSecretTrack.paused&&Number.isFinite(yujiSecretTrack.currentTime)){
+  const at=clamp(yujiSecretTrack.currentTime,0,28);
+  // Don't let a transient audio seek jump the visual sequence backward.
+  f.life=Math.min(f.life,28-at);
+ }
+ const sec=28-f.life,dir=f.dir;
+ const smooth=x=>{x=clamp(x,0,1);return x*x*(3-2*x);};
+ p.vx=p.vy=q.vx=q.vy=0;p.dir=dir;q.dir=-dir;
+ p.y=FLOOR;q.y=FLOOR;
+ // Close-quarters feint, stillness, charge-up, then the explosive final punch.
+ if(sec<7){p.x=clamp(f.originX+dir*18*smooth(sec/7),50,W-50);q.x=clamp(f.targetX+dir*20*smooth(sec/7),50,W-50);}
+ else if(sec<17){p.x=clamp(f.targetX-dir*115,50,W-50);q.x=clamp(f.targetX+dir*20,50,W-50);}
+ else if(sec<22){p.x=clamp(f.targetX-dir*(115-76*smooth((sec-17)/5)),50,W-50);q.x=clamp(f.targetX+dir*20,50,W-50);}
+ else {p.x=clamp(f.targetX-dir*39,50,W-50);q.x=clamp(f.targetX+dir*(20+360*smooth((sec-22)/3)),50,W-50);q.y=clamp(FLOOR-115*Math.sin(Math.PI*smooth((sec-22)/5)),80,FLOOR);}
+ p.animKind=sec>20&&sec<24?'blackflash':sec<12?'idle':'ultimate';
+ q.animKind=sec>22?'hurt':'idle';
+ const beats=[2.3,5.4,9.6,13.2,17.4,20.8,22.25,23.1,24.6,26.5];
+ while(f.beat<beats.length&&sec>=beats[f.beat]){
+  const k=f.beat++;
+  if(k===6||k===7){
+   frameShake(k===7?38:17);impactCamera=k===7?1.2:.55;impactX=q.x;impactY=q.y-85;
+   blackFlashScenes.push({char:'yuji',x:q.x,y:q.y-85,originX:p.x,originY:p.y-78,dir,life:1.2,max:1.2,seed:Math.random()*TAU});
+   sparks(q.x,q.y-90,'#ed1642',k===7?120:48,k===7?710:390);
+   sparks(q.x,q.y-90,'#07030d',k===7?95:34,k===7?650:340);
+   for(let j=0;j<15;j++)slash(q.x+random(-65,65),q.y-90+random(-70,70),random(100,340),random(-PI,PI),j%3?'#fa164b':'#08020b',1.15,random(4,13));
+  }else if(k===2||k===4){frameShake(5);sparks(p.x+dir*45,p.y-95,'#fa2b50',20,175);}
+ }
+}
+function drawYuji28(f){
+ const sec=28-f.life,phase=sec<5?0:sec<10?1:sec<16?2:sec<21?3:sec<24.7?4:5;
+ const ease=x=>{x=clamp(x,0,1);return x*x*(3-2*x);};
+ const pulse=Math.sin(sec*2.9),cx=W/2,cy=H/2;
+ ctx.save();
+ // Full-screen cinematic composition; the underlying fight remains paused.
+ ctx.fillStyle=phase===4?'#15000a':phase===5?'#08070d':'#060810';ctx.fillRect(0,0,W,H);
+ const halo=ctx.createRadialGradient(cx,cy,12,cx,cy,620);
+ halo.addColorStop(0,phase>=3?'#77152e':'#252e4a');halo.addColorStop(.48,phase>=3?'#240716':'#11172b');halo.addColorStop(1,'#03030a');
+ ctx.fillStyle=halo;ctx.fillRect(0,0,W,H);
+ // Parallax rain, speed-lines and sharp anime panel borders.
+ ctx.strokeStyle=phase>=3?'#b22d5270':'#c6d5ff20';ctx.lineWidth=2;
+ for(let i=0;i<42;i++){
+  const x=(i*137.3+sec*(phase>=4?760:45))%(W+140)-70;
+  const y=(i*79.7+sec*130)%(H+120)-60;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-(phase>=4?140:12),y+(phase>=4?90:42));ctx.stroke();
+ }
+ const sceneNames=['THE STANDOFF','THE RESOLVE','CURSED ENERGY','ONE FINAL STRIKE','BLACK FLASH','AFTERMATH'];
+ // Subtle shot-by-shot push-in and changing composition.
+ const push=phase===0?1.0+sec*.013:phase===1?1.12:phase===2?1.25+ease((sec-10)/6)*.13:phase===3?1.3:phase===4?1.5:1.05;
+ ctx.save();ctx.translate(cx,cy+32);ctx.scale(push,push);ctx.translate(-cx,-cy-32);
+ const y=H*.78;
+ if(phase===0){
+  poseFigure(cx-210,y,'#bd566a',sec,'pose',1,1.25);
+  poseFigure(cx+190,y,'#65718c',sec,'idle',-1,1.2);
+ }else if(phase===1){
+  poseFigure(cx-150,y,'#ca5366',sec,'idle',1,1.55);
+  poseFigure(cx+175,y,'#66718b',sec,'idle',-1,1.55);
+ }else if(phase===2){
+  poseFigure(cx-105,y+28,'#e15a70',sec,'pose',1,1.95);
+  ctx.globalCompositeOperation='screen';
+  for(let j=0;j<11;j++){
+   const a=j*TAU/11+sec*.7,r=75+15*Math.sin(sec*4+j);
+   ctx.strokeStyle=j%2?'#f02457':'#7d1539';ctx.lineWidth=j%2?4:9;
+   ctx.beginPath();ctx.moveTo(cx-115+Math.cos(a)*35,y-160+Math.sin(a)*35);
+   ctx.lineTo(cx-115+Math.cos(a+.25)*r,y-160+Math.sin(a+.25)*r);ctx.stroke();
+  }
+  ctx.globalCompositeOperation='source-over';
+ }else if(phase===3){
+  poseFigure(cx-170+ease((sec-17)/4)*145,y,'#d34e65',sec,'punch',1,1.75);
+  poseFigure(cx+125,y,'#70758e',sec,'idle',-1,1.55);
+ }else if(phase===4){
+  const hit=ease((sec-21)/1.5);
+  poseFigure(cx-110+hit*115,y,'#ff7183',sec,'punch',1,2.05);
+  poseFigure(cx+155+hit*170,y-hit*85,'#8992a9',sec,'idle',-1,1.7);
+  const ix=cx+85+hit*90,iy=y-155;
+  ctx.globalCompositeOperation='screen';
+  const blast=ctx.createRadialGradient(ix,iy,0,ix,iy,260+hit*180);
+  blast.addColorStop(0,'#ffffff');blast.addColorStop(.12,'#ffb2c4');blast.addColorStop(.3,'#ee1d51aa');blast.addColorStop(1,'#a6002200');
+  ctx.fillStyle=blast;ctx.fillRect(0,0,W,H);
+  ctx.globalCompositeOperation='source-over';
+  for(let j=0;j<25;j++){
+   const a=j*2.399+sec*2.1,r=60+j*12+hit*80;
+   ctx.strokeStyle=j%3?'#ef154a':'#090008';ctx.lineWidth=j%3?6:14;
+   ctx.beginPath();ctx.moveTo(ix+Math.cos(a)*35,iy+Math.sin(a)*35);
+   ctx.lineTo(ix+Math.cos(a+.2)*r,iy+Math.sin(a+.2)*r);ctx.stroke();
+  }
+ }else{
+  poseFigure(cx-125,y,'#b44e63',sec,'pose',1,1.45);
+  poseFigure(cx+195+ease((sec-24.7)/2)*100,y+25,'#49516a',sec,'idle',-1,1.0);
+ }
+ ctx.restore();
+ // Impact freeze frames, inverted ink panels and a final white-out.
+ if(sec>22.05&&sec<22.29||sec>23.03&&sec<23.16){ctx.fillStyle='#f7e9ec';ctx.fillRect(0,0,W,H);ctx.fillStyle='#1b0711';ctx.textAlign='center';ctx.font='1000 96px system-ui';ctx.fillText('黒 閃',cx,cy+34);}
+ if(sec>23.15&&sec<23.8){ctx.fillStyle='rgba(240,15,61,.18)';ctx.fillRect(0,0,W,H);}
+ if(sec>26.5){ctx.fillStyle=`rgba(0,0,0,${ease((sec-26.5)/1.5)*.94})`;ctx.fillRect(0,0,W,H);}
+ // Cinema bars, shot title and 28s timeline.
+ ctx.fillStyle='#020208';ctx.fillRect(0,0,W,49);ctx.fillRect(0,H-56,W,56);
+ ctx.textAlign='center';ctx.shadowColor='#e91a49';ctx.shadowBlur=phase>=3?16:0;
+ ctx.fillStyle=phase>=4?'#ffe5eb':'#e9e7f2';ctx.font='900 23px system-ui';
+ ctx.fillText(phase===4?'K O K U S E N !':phase===5?'THE LAST BLACK FLASH':sceneNames[phase],cx,84);
+ ctx.shadowBlur=0;
+ ctx.fillStyle='#e8a5b5';ctx.font='600 14px system-ui';
+ ctx.fillText(phase===0?'FOURTH BLACK FLASH · SECRET FINISHER':phase===2?'THE ENERGY CONVERGES':phase===3?'NO WAY BACK':phase===4?'黒閃 · BLACK FLASH':phase===5?'THE BATTLE IS OVER':'SILENCE BEFORE THE STORM',cx,109);
+ ctx.fillStyle='#ffffff30';ctx.fillRect(115,H-30,W-230,3);
+ ctx.fillStyle='#f42d58';ctx.fillRect(115,H-30,(W-230)*clamp(sec/28,0,1),3);
+ ctx.fillStyle='#f1d5df';ctx.font='700 12px monospace';ctx.textAlign='right';ctx.fillText(`${Math.min(28,sec).toFixed(1)} / 28.0`,W-115,H-37);
+ ctx.restore();
 }
 function drawLiveFinisherFX(){if(!cinematic)return;const f=cinematic,t=1-f.life/f.max,q=players[f.victim];
+ if(f.variant==='fourthBlackFlashSecret'){drawYuji28(f);return;}
  ctx.save();
  // Letterbox & camera framing are overlaid; the actual arena and combat effects remain visible.
  const letter=27;ctx.fillStyle='rgba(2,3,12,.84)';ctx.fillRect(0,0,W,letter);ctx.fillRect(0,H-letter,W,letter);
@@ -957,7 +1069,7 @@ let yujiSecretTrack=null;
 function stopYujiSecretAudio(){if(yujiSecretTrack){yujiSecretTrack.pause();yujiSecretTrack.currentTime=0;}}
 function yujiFinalAudio(fromRelay=false){
  try{
-  if(!yujiSecretTrack){yujiSecretTrack=new Audio('./yuji_secret_finisher.mp3');yujiSecretTrack.preload='auto';yujiSecretTrack.volume=.88;}
+  if(!yujiSecretTrack){yujiSecretTrack=new Audio('./yuji_secret_finisher.mp3');yujiSecretTrack.preload='auto';yujiSecretTrack.volume=.93;}
   stopYujiSecretAudio();
   const started=yujiSecretTrack.play();
   if(started&&started.catch)started.catch(()=>console.info('Browser blocked finisher audio. Interact with the game to enable sound.'));
