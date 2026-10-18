@@ -73,7 +73,7 @@ function refreshComboGuide(){
  const route=tier==='easy'?'F → F → F → F · Knockback → H pursuit (-18 CE)':tier==='medium'?`F ×2 → ${kit[0]} → F → ${kit[1]}`:`F ×2 → ${kit[0]} → F → B (timed Black Flash)`;
  document.getElementById('comboLabel').textContent=title;
  document.getElementById('comboRoute').textContent=route;
- document.getElementById('comboFeedback').textContent=tier==='easy'?'Fourth M1 creates real space. Spend 18 CE and press H during the pursuit window to extend.':tier==='medium'?'Confirmed hits link into dedicated multi-hit techniques. Fourth M1 ends the string unless you dash-cancel.':'Shorter stun and 95ms buffer. Press B within 210ms after a confirmed punch. No random Black Flash.';
+ document.getElementById('comboFeedback').textContent=tier==='easy'?'Fourth M1 creates real space. Spend 18 CE and press H during the pursuit window to extend.':tier==='medium'?'Confirmed hits link into dedicated multi-hit techniques. Fourth M1 ends the string unless you dash-cancel.':'Shorter stun and 95ms buffer. Press B within 340ms after a confirmed punch. No random Black Flash.';
 }
 function newMatch(){document.getElementById('errors').textContent='';domainDuel=null;domainCast=null;cinematic=null;cinematicT=0;const picks=[0,1].map(i=>document.getElementById('char'+i).value);score=[0,0];round=1;players=[fighter(0,picks[0]),fighter(1,picks[1])];clearTemporary();gameOver=false;paused=false;intermission=0;elapsed=0;noticeTTL=0;document.getElementById('pause').textContent='Pause';brain.decision=0;brain.move=0;brain.guard=false;brain.retreat=0;brain.bfDelay=-1;brain.skillWait=1.3;brain.attackWait=.6;brain.breath=.5;brain.guardTime=0;brain.comboPlan=0;brain.bfChecked=false;brain.bfUsed=0;brain.bfLast=-100;refreshDescription();refreshComboGuide();msg('ROUND 1 — FIGHT!',1.5);canvas.focus();}
 function clearTemporary(){domainDuel=null;domainCast=null;blackFlashScenes.length=0;yukiEffects.length=0;signatureFX.length=0;combatFX.length=0;cinematic=null;cinematicT=0;particles.length=0;strokes.length=0;rings.length=0;projectiles.length=0;actors.length=0;fields.length=0;beams.length=0;texts.length=0;afterimages.length=0;for(const p of players)p.domainObj=null;}
@@ -909,7 +909,7 @@ function drawLiveFinisherFX(){if(!cinematic)return;const f=cinematic,t=1-f.life/
  ctx.restore();}
 function blackFlash(p){if(p.stun>0||p.bfCD>0||p.bfWindow<=0||intermission>0||gameOver)return;
  const q=other(p);p.bfWindow=0;p.bfCD=p.char==='yuji'&&p.bfChainTimer>0?1.8:4.5;
- if(q.hp<=0||Math.abs(q.x-p.x)>155){floater(p.x,p.y-150,'TIMING LOST','#f7a6b6',15);return;}
+ if(q.hp<=0||Math.abs(q.x-p.x)>185){floater(p.x,p.y-150,'TIMING LOST','#f7a6b6',15);return;}
  p.bfHits++;p.ce=clamp(p.ce+12,0,100);if(p.awake<=0)p.meter=clamp(p.meter+(p.char==='yuji'?6:3),0,100);
  if(p.char==='yuji'){p.bfChain=p.bfChainTimer>0?Math.min(3,p.bfChain+1):1;p.bfChainTimer=7;floater(p.x,p.y-205,'BLACK FLASH FLOW ×'+p.bfChain,'#ffb5bb',18);}
 
@@ -936,7 +936,7 @@ function punch(p){
  const stun=finisher?.72:tier==='easy'?.90:tier==='hard'?.57:.72;
  const dealt=damage(p,q,amount,finisher?790:stage===3?45:18,{stun,combo:true,ender:finisher});
  if(!dealt||q.guard){p.hitCount=0;p.comboTime=0;p.linkUsed=false;p.linkCount=0;p.bfWindow=0;return false;}
- p.queuedPunch=0;p.hitCount=stage;p.comboTime=finisher?0:1.0;p.bfWindow=.21;p.bfTarget=q.id;
+ p.queuedPunch=0;p.hitCount=stage;p.comboTime=finisher?0:1.0;p.bfWindow=.34;p.bfTarget=q.id;
  if(!finisher&&q.hp>0){
    const ideal=clamp(p.x+p.dir*77,35,W-35);
    q.x=mix(q.x,ideal,.47);
@@ -1027,6 +1027,17 @@ function action(p,key){
  if(domainCast){if(p&&key===controls[p.id].domain)domain(p);return;}
  if(!p||intermission>0||gameOver||paused)return;
  const c=controls[p.id];
+ // Black Flash is a precisely timed follow-up to a CONFIRMED M1 hit.
+ // It must bypass ordinary move commitment, otherwise the 0.21s input
+ // window expires while the character is still locked in their punch.
+ if(key===c.black){
+   if(p.bfWindow>0 && p.bfCD<=0 && p.bfTarget===other(p).id && p.stun<=0){
+     p.moveCommit=0;
+     blackFlash(p);
+   }else if(p.bfCD>0){floater(p.x,p.y-175,'BLACK FLASH RECHARGING','#ffb3bc',12);}
+   else {floater(p.x,p.y-175,'LAND M1 FIRST','#ffb3bc',12);}
+   return;
+ }
  if(committed(p))return;
  if(penalizeMash(p,key))return;
  // Absolute combat lock: no attacks, Black Flash, skills, jumps, awakenings or
@@ -1040,7 +1051,6 @@ function action(p,key){
    q.stun=Math.max(q.stun,.48);q.hitLink=.55;combatEffect('chase',p.x,p.y-88,p.dir,p.char,1);
    floater(p.x,p.y-194,'PURSUIT CANCEL · -18 CE',roster[p.char].secondary,15);return;
  }
- if(key===c.black){blackFlash(p);return;}
  if(key===c.punch){if(p.punchCD>0&&p.comboTime>0&&p.hitCount>0){p.queuedPunch=(p.id===0||pvp())?(document.getElementById('comboTier').value==='hard'?.095:document.getElementById('comboTier').value==='medium'?.17:.25):.22;}else punch(p);}
  // Black Flash has a separate precision input and a substantial cooldown.
  if(key===c.dash&&p.dashCD<=0){p.vx=p.dir*1030;p.inv=.22;p.dashCD=1.55;flashBehind(p,col(p),7);sparks(p.x,p.y-60,col(p),20,250);}
