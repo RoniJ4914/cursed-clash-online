@@ -275,28 +275,42 @@ function sfxPlay(type,scale=1,force=false){
 // Unlike recorded CC0 punches/movement, these clips have unverified redistribution rights;
 // they are loaded remotely and NOT copied into this game file.
 // <audio> playback intentionally avoids WebAudio fetch/CORS restrictions for these hosts.
+// Attack-length excerpts from the JJK-specific recordings. Never play the full 10s clip.
 const GOJO_JJK_CLIPS={
- blue:{url:'https://www.myinstants.com/media/sounds/gojo-lapse-blue.mp3',label:'Gojo: Lapse Blue',volume:.72},
- red:{url:'https://www.myinstants.com/media/sounds/gojo-reversal-red.mp3',label:'Gojo: Reversal Red',volume:.78},
- purple:{url:'https://www.myinstants.com/media/sounds/hollow-purple-no-voice.mp3',label:'Hollow Purple (no voice)',volume:.82}
+ blue:{url:'https://www.myinstants.com/media/sounds/gojo-lapse-blue.mp3',label:'Gojo: Lapse Blue',volume:.72,duration:1.10},
+ red:{url:'https://www.myinstants.com/media/sounds/gojo-reversal-red.mp3',label:'Gojo: Reversal Red',volume:.78,duration:1.35},
+ purple:{url:'https://www.myinstants.com/media/sounds/hollow-purple-no-voice.mp3',label:'Hollow Purple (no voice)',volume:.82,duration:2.10}
 };
 const GOJO_JJK_PLAYERS=new Map();
 const GOJO_JJK_ERRORS=new Set();
+const GOJO_JJK_TIMERS=new Map();
+const GOJO_JJK_FADE=.15;
+function ccStopGojoRecorded(name){
+ const timer=GOJO_JJK_TIMERS.get(name);
+ if(timer!==undefined){clearInterval(timer);GOJO_JJK_TIMERS.delete(name);}
+ const entry=GOJO_JJK_PLAYERS.get(name);
+ if(!entry)return;
+ const a=entry.audio;
+ try{a.pause();a.currentTime=0;a.volume=0;}catch(e){}
+}
+function ccStopAllGojoRecorded(){for(const name of GOJO_JJK_PLAYERS.keys())ccStopGojoRecorded(name);}
 function ccGojoAudioReady(){
  for(const [name,config] of Object.entries(GOJO_JJK_CLIPS)){
   if(GOJO_JJK_PLAYERS.has(name))continue;
-  // Two channels allow a quick recast to overlap rather than cut the last sample.
-  const channels=[0,1].map(()=>{
-   const a=new Audio(config.url);
-   a.preload='auto';a.volume=0;
-   a.addEventListener('error',()=>{
-    GOJO_JJK_ERRORS.add(name);
-    console.warn('JJK sound unavailable:',name,'— try the source page or host a licensed copy.');
-    ccStatus();
-   });
-   return a;
+  // One audio channel per skill: a new attack interrupts the prior sample.
+  const a=new Audio(config.url);
+  a.preload='auto';a.volume=0;
+  a.addEventListener('error',()=>{
+   GOJO_JJK_ERRORS.add(name);
+   console.warn('JJK sound unavailable:',name,'— try the source page or host a licensed copy.');
+   ccStatus();
   });
-  GOJO_JJK_PLAYERS.set(name,{channels,index:0});
+  // Protect against background-tab timer delays and an unexpectedly long clip.
+  a.addEventListener('timeupdate',()=>{
+   if(a.currentTime>=config.duration)ccStopGojoRecorded(name);
+  });
+  a.addEventListener('ended',()=>ccStopGojoRecorded(name));
+  GOJO_JJK_PLAYERS.set(name,{audio:a});
  }
 }
 function ccGojoRecorded(type,scale=1){
@@ -304,20 +318,37 @@ function ccGojoRecorded(type,scale=1){
  ccGojoAudioReady();
  const entry=GOJO_JJK_PLAYERS.get(type),config=GOJO_JJK_CLIPS[type];
  if(!entry||!config)return;
- const a=entry.channels[entry.index++%entry.channels.length];
+ // Never leave a different Gojo clip playing beneath the next cast.
+ ccStopAllGojoRecorded();
+ const a=entry.audio;
+ const target=Math.max(0,Math.min(1,SFX.volume*config.volume*scale));
  try{
-  a.pause();a.currentTime=0;
-  a.volume=Math.max(0,Math.min(1,SFX.volume*config.volume*scale));
+  a.currentTime=0;
+  a.volume=target;
+  const started=performance.now();
+  const update=()=>{
+   if(a.paused){const timer=GOJO_JJK_TIMERS.get(type);if(timer!==undefined)clearInterval(timer);GOJO_JJK_TIMERS.delete(type);return;}
+   const elapsed=(performance.now()-started)/1000;
+   if(elapsed>=config.duration||a.currentTime>=config.duration){ccStopGojoRecorded(type);return;}
+   const left=config.duration-elapsed;
+   a.volume=Math.max(0,Math.min(1,target*Math.min(1,left/GOJO_JJK_FADE)));
+  };
+  // Both the real-time clock and media timeline guard the clip's duration.
+  const timer=setInterval(update,25);
+  GOJO_JJK_TIMERS.set(type,timer);
   const p=a.play();
   if(p&&typeof p.catch==='function')p.catch(err=>{
+   ccStopGojoRecorded(type);
    GOJO_JJK_ERRORS.add(type);ccStatus();
    console.warn('Could not play JJK '+type+' audio:',err.message);
   });
- }catch(err){GOJO_JJK_ERRORS.add(type);ccStatus();console.warn('Could not start '+type+' audio:',err.message);}
+ }catch(err){ccStopGojoRecorded(type);GOJO_JJK_ERRORS.add(type);ccStatus();console.warn('Could not start '+type+' audio:',err.message);}
 }
 function ccGojoVolume(){
- for(const [name,entry] of GOJO_JJK_PLAYERS){for(const a of entry.channels)
-  a.volume=SFX.muted?0:Math.max(0,Math.min(1,SFX.volume*GOJO_JJK_CLIPS[name].volume));}
+ for(const [name,entry] of GOJO_JJK_PLAYERS){
+  if(SFX.muted){ccStopGojoRecorded(name);continue;}
+  if(!entry.audio.paused)entry.audio.volume=Math.min(1,SFX.volume*GOJO_JJK_CLIPS[name].volume);
+ }
 }
 function ccEnergy(type,scale=1){
  // Character-specific JJK recordings replace the former fantasy-spell/sci-fi layers.
