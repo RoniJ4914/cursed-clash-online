@@ -167,10 +167,17 @@ const CC_SAMPLES={
  gravel:CC_AUDIO_ROOT+'oga-footsteps/gravel.ogg',
  slam1:ccImpact('impactBell_heavy',2),slam2:ccImpact('impactBell_heavy',3),
  crack1:ccImpact('impactGlass_heavy',0),crack2:ccImpact('impactGlass_heavy',2),
- ui:ccImpact('impactGeneric_light',1)
+ ui:ccImpact('impactGeneric_light',1),
+ // Recorded CC0 magical energy, blade and air movement sounds from the SAME audio archive.
+ cePulse:CC_AUDIO_ROOT+'oga-rpg-pack/RPG%20Sound%20Pack/battle/magic1.wav',
+ ceSpell:CC_AUDIO_ROOT+'oga-rpg-pack/RPG%20Sound%20Pack/battle/spell.wav',
+ slice1:CC_AUDIO_ROOT+'oga-rpg-pack/RPG%20Sound%20Pack/battle/swing.wav',
+ slice2:CC_AUDIO_ROOT+'oga-rpg-pack/RPG%20Sound%20Pack/battle/swing2.wav',
+ slice3:CC_AUDIO_ROOT+'oga-rpg-pack/RPG%20Sound%20Pack/battle/swing3.wav',
+ swordDraw:CC_AUDIO_ROOT+'oga-rpg-pack/RPG%20Sound%20Pack/battle/sword-unsheathe.wav'
 };
-// No laser, force-field, sci-fi explosion, or electronic chime recordings.
-// Combat cues use physical punch hits, concrete thuds, swishes and short cracks.
+// Real CC0 samples only: recorded punches, spell magic, air cuts, sword swishes, impacts.
+// No oscillators, random audio synthesis, arcade lasers, or generic skill spam.
 const CC_RECIPES={
  hit:[['jab1',.82,1.03,0],['jab2',.8,1.02,0],['jab3',.83,1,0],['jab4',.76,.99,0]],
  punchwhiff:[['air1',.34,1.20,0],['air2',.32,1.23,0]],
@@ -178,17 +185,17 @@ const CC_RECIPES={
  counter:[['solid3',.85,.94,0],['crack2',.50,1.12,0]],
  heavy:[['solid1',.88,.87,0],['solid2',.84,.92,0],['solid3',.88,.90,0]],
  air:[['air2',.60,1.12,0],['air3',.58,1.1,0]],
- sword:[['air1',.66,.92,0],['air3',.62,.94,0]],
+ sword:[['slice1',.86,1.07,0],['slice2',.84,1.04,0],['slice3',.78,1.03,0]],
  dash:[['air2',.58,.91,0],['air3',.57,1.12,0]],
- skill:[['air3',.61,1.20,0],['air2',.56,1.02,0],['solid4',.44,1.1,0]],
+ skill:[['cePulse',.43,1.12,0],['air2',.45,1.03,0]],
  footstep:[['step1',.19,.97,0],['step2',.18,1.03,0],['step3',.18,1,0]],
  run:[['step3',.25,1.09,0],['step1',.23,1.12,0],['step2',.22,1.06,0]],
  jump:[['air1',.38,1.4,0]],
  land:[['slam2',.42,1.33,0]],
  fall:[['solid3',.65,.83,0]],
- awaken:[['air3',.64,.92,0],['solid2',.55,.97,.075]],
- domain:[['slam1',.88,.78,0],['solid1',.72,.85,.06]],
- ultimate:[['solid3',.90,.86,0],['slam2',.72,.88,.045]],
+ awaken:[['cePulse',.76,.79,0],['ceSpell',.45,1.18,0]],
+ domain:[['ceSpell',.77,.85,0],['cePulse',.75,.75,0]],
+ ultimate:[['ceSpell',.84,.93,0],['cePulse',.90,.82,0]],
  victory:[['slam1',.45,1.1,0]],
  ko:[['crushing2',.92,.92,0],['slam2',.65,.9,.04]],
  ui:[['ui',.32,1.24,0]],
@@ -201,7 +208,7 @@ function ccStatus(){
  const out=document.getElementById('ccAudioStatus');if(!out)return;
  const n=SFX.buffers.size,failed=SFX.failed.size,total=Object.keys(CC_SAMPLES).length;
  out.textContent=failed?`Samples ${n}/${total} · ${failed} unavailable`:`Samples ${n}/${total}`;
- out.title='CC0 recorded punches, thuds and swishes; no sci-fi samples. Audio loads online.';
+ out.title='Recorded CC0 samples from Open Game SFX Index: punches, sword cuts and magical-energy bursts. Online source.';
 }
 function sfxInit(){
  if(!SFX.ready){
@@ -233,14 +240,14 @@ function sfxInit(){
  if(SFX.ctx&&SFX.ctx.state==='suspended')SFX.ctx.resume().catch(()=>{});
  ccStatus();
 }
-function ccOne(key,gain=1,rate=1,delay=0,pan=0){
+function ccOne(key,gain=1,rate=1,delay=0,pan=0,limit=0){
  const c=SFX.ctx,buf=SFX.buffers.get(key);if(!c||!buf||SFX.muted)return false;
  const src=c.createBufferSource();src.buffer=buf;src.playbackRate.value=rate;
  const amp=c.createGain();amp.gain.value=gain;
  src.connect(amp);
  if(typeof c.createStereoPanner==='function'){const p=c.createStereoPanner();p.pan.value=pan;amp.connect(p);p.connect(SFX.master);}else amp.connect(SFX.master);
  src.onended=()=>{try{src.disconnect();amp.disconnect()}catch(e){}};
- src.start(c.currentTime+Math.max(0,delay));return true;
+ const when=c.currentTime+Math.max(0,delay);src.start(when);if(limit>0)src.stop(when+limit);return true;
 }
 function sfxPlay(type,scale=1,force=false){
  if(SFX.muted)return;
@@ -262,16 +269,67 @@ function sfxPlay(type,scale=1,force=false){
  if(type==='guard'&&!tight)ccOne('air3',.12*scale,1.05,.01);
  if(type==='ultimate'&&!tight)ccOne('crack2',.20*scale,1.10,.045);
 }
+// Every layer is an actual recorded sample. Playback-rate and short excerpts
+// tailor the recorded sound to an attack; nothing here synthesizes a waveform.
+function ccEnergy(type,scale=1){
+ if(SFX.muted)return;
+ if(!SFX.ready)sfxInit();
+ if(SFX.ctx?.state==='suspended')SFX.ctx.resume().catch(()=>{});
+ const t=performance.now()/1000;
+ if(t-(SFX.last.get('ce:'+type)??-10)<.095)return;
+ SFX.last.set('ce:'+type,t);
+ const hit=(key,gain,rate=1,delay=0,limit=0)=>ccOne(key,gain*scale,rate,delay,0,limit);
+ switch(type){
+  case 'blue':        // gravitational draw: reverse-feeling air sweep + liquid magic current
+   hit('air2',.33,.72,0);hit('cePulse',.55,.78,.014,.62);break;
+  case 'red':         // repulsion: magic ignition -> deep compressed boom
+   hit('cePulse',.60,1.22,0,.37);hit('slam1',.58,.79,.074);hit('air3',.45,.79,.02);break;
+  case 'purple':      // fusion: long dark pressure swell -> layered energy release
+   hit('ceSpell',.74,.9,0,1.65);hit('cePulse',.70,.71,.13,.7);hit('slam1',.68,.65,.19);break;
+  case 'slash':       // Dismantle/Cleave: two knife-sharp air cuts, NOT punches
+   hit('slice2',.80,1.15,0);hit('slice1',.75,.95,.085);hit('air1',.28,1.02,.035);break;
+  case 'slashHeavy':
+   hit('swordDraw',.62,1.2,0,.35);hit('slice3',.93,.86,.085);hit('crack2',.26,1.2,.12);break;
+  case 'cursed':
+   hit('cePulse',.60,1.09,0,.62);hit('air3',.27,.91,.03);break;
+  case 'shadow':
+   hit('ceSpell',.42,1.20,0,.70);hit('air1',.35,.70,.025);break;
+  case 'soul':
+   hit('cePulse',.58,.88,0,.67);hit('slice3',.25,.64,.045);break;
+  case 'rika':
+   hit('ceSpell',.59,.94,0,.88);hit('solid2',.32,.76,.055);break;
+  case 'mass':
+   hit('air3',.37,.72,0);hit('slam1',.65,.82,.066);hit('cePulse',.28,.74,.01,.45);break;
+  case 'jackpot':
+   hit('cePulse',.58,1.30,0,.55);hit('crack1',.34,1.15,.085);break;
+  case 'domain':
+   hit('ceSpell',.80,.69,0,1.40);hit('slam1',.58,.68,.20);break;
+  case 'awakening':
+   hit('ceSpell',.63,1.08,0,1.15);hit('cePulse',.57,.8,.22,.65);break;
+  default:hit('cePulse',.52,1.0,0,.65);break;
+ }
+}
+function ccTechniqueKind(p,j){
+ if(p.char==='gojo')return p.awake>0?(['blue','red','cursed','purple'][j]):(['blue','red','cursed','cursed'][j]);
+ if(p.char==='sukuna')return p.awake>0?(['slash','slashHeavy','cursed','slashHeavy'][j]):(['slash','slashHeavy','slash','slash'][j]);
+ if(p.char==='megumi')return 'shadow';
+ if(p.char==='mahito')return 'soul';
+ if(p.char==='yuta')return 'rika';
+ if(p.char==='hakari')return 'jackpot';
+ if(p.char==='yuki')return j===0||j===2?'mass':'shadow';
+ return 'cursed';
+}
+function ccTechniqueSfx(p,j){ccEnergy(ccTechniqueKind(p,j));}
 function sfxBlackFlash(){
  if(SFX.muted)return;
  if(!SFX.ready)sfxInit();
  if(SFX.ctx?.state==='suspended')SFX.ctx.resume().catch(()=>{});
  const n=SFX.index.get('blackflash')||0;SFX.index.set('blackflash',n+1);
- // Focused shonen-style punch: a solid body hit at contact, a deep physical
- // thud just behind it, then a short recorded crack. No explosions or lasers.
- ccOne(['crushing1','crushing2','crushing3'][n%3],.98,1.02,0);
- ccOne(['solid3','solid4'][n%2],.65,.87,.021);
- ccOne(['crack1','crack2'][n%2],.32,1.18,.052);
+ // Punch at contact, a recorded magic burst like cursed lightning, THEN sharp crack.
+ ccOne(['crushing1','crushing2','crushing3'][n%3],.91,1.05,0);
+ ccOne('cePulse',.83,1.27,.008,0,.40);
+ ccOne('solid3',.48,.84,.022);
+ ccOne(['crack1','crack2'][n%2],.32,1.25,.067);
 }
 function tickMovementSfx(dt){
  if(cinematic||paused||gameOver||intermission>0||domainCast||domainDuel)return;
@@ -294,7 +352,7 @@ window.addEventListener('load',()=>{sfxInit();ccStatus()},{once:true});
 function toggleGameSfx(){sfxInit();SFX.muted=!SFX.muted;document.getElementById('sfxToggle').textContent=SFX.muted?'🔇 SFX OFF':'🔊 SFX ON';}
 function setGameSfxVolume(v){SFX.volume=Number(v)/100;if(SFX.master)SFX.master.gain.value=SFX.volume;}
 function ccSetStyle(v){SFX.style=v;}
-function ccPreview(type){sfxInit();if(type==='blackflash')sfxBlackFlash();else sfxPlay(type,1,true);}
+function ccPreview(type){sfxInit();if(type==='blackflash')sfxBlackFlash();else if(['blue','red','purple','slash','cursed','domain'].includes(type))ccEnergy(type);else sfxPlay(type,1,true);}
 window.toggleGameSfx=toggleGameSfx;window.setGameSfxVolume=setGameSfxVolume;
 window.ccSetStyle=ccSetStyle;window.ccPreview=ccPreview;
 window.__ccSfxTest={play:sfxPlay,state:SFX,preview:ccPreview};
@@ -629,7 +687,7 @@ function linkedMove(p,j,link){
  }
  if(ender){p.hitCount=0;p.comboTime=0;}
 }
-function spend(p,j,cost,cd){if(committed(p)||p.stun>0||p.guard||p.cool[j]>0||gameOver||intermission>0)return false;if(p.ce<cost){floater(p.x,p.y-170,'LOW CURSED ENERGY','#ff9db6',14);return false;}p.ce-=cost;p.cool[j]=cd;sfxPlay('skill');commitMove(p,.42);p.pose=.32;p.animKind='skill';p.animSkill=j;p.animTime=.38;p.animDuration=.38;return true;}
+function spend(p,j,cost,cd){if(committed(p)||p.stun>0||p.guard||p.cool[j]>0||gameOver||intermission>0)return false;if(p.ce<cost){floater(p.x,p.y-170,'LOW CURSED ENERGY','#ff9db6',14);return false;}p.ce-=cost;p.cool[j]=cd;ccTechniqueSfx(p,j);commitMove(p,.42);p.pose=.32;p.animKind='skill';p.animSkill=j;p.animTime=.38;p.animDuration=.38;return true;}
 
 const combatFX=[];
 function combatEffect(type,x,y,dir,char,power=1){
@@ -796,8 +854,8 @@ function cast(p,j){if(committed(p))return;const q=other(p),aw=p.awake>0;
 
 
 }
-function awaken(p){if(committed(p)||p.meter<100||p.awake>0||p.stun>0||intermission>0||gameOver)return;sfxPlay('awaken');commitMove(p,.85);p.meter=0;p.awake=22;p.ultUsed=false;p.ce=100;p.hp=Math.min(100,p.hp+14);p.inv=.8;p.cool=[0,0,0,0];frameShake(16);sparks(p.x,p.y-95,'#ffe8a2',105,530);for(let k=0;k<6;k++)arc(p.x,p.y-85,18+k*16,'#ffe39d',1+k*.1);floater(p.x,p.y-201,roster[p.char].name.toUpperCase()+' AWAKENED','#ffe5a3',23);msg(roster[p.char].name+' AWAKENED — 4 NEW MOVES + ULTIMATE!',2.1);}
-function ultimate(p){if(committed(p)||!p.awake||p.ultUsed||p.ce<45||p.stun>0||intermission>0||gameOver)return;sfxPlay('ultimate');commitMove(p,1.05);p.ultUsed=true;p.animKind='ultimate';p.animTime=1.0;p.animDuration=1.0;p.ce-=45;p.ultCD=18;p.pose=.85;frameShake(24);let q=other(p);
+function awaken(p){if(committed(p)||p.meter<100||p.awake>0||p.stun>0||intermission>0||gameOver)return;ccEnergy('awakening');commitMove(p,.85);p.meter=0;p.awake=22;p.ultUsed=false;p.ce=100;p.hp=Math.min(100,p.hp+14);p.inv=.8;p.cool=[0,0,0,0];frameShake(16);sparks(p.x,p.y-95,'#ffe8a2',105,530);for(let k=0;k<6;k++)arc(p.x,p.y-85,18+k*16,'#ffe39d',1+k*.1);floater(p.x,p.y-201,roster[p.char].name.toUpperCase()+' AWAKENED','#ffe5a3',23);msg(roster[p.char].name+' AWAKENED — 4 NEW MOVES + ULTIMATE!',2.1);}
+function ultimate(p){if(committed(p)||!p.awake||p.ultUsed||p.ce<45||p.stun>0||intermission>0||gameOver)return;ccEnergy(p.char==='gojo'?'purple':p.char==='sukuna'?'slashHeavy':p.char==='yuki'?'mass':p.char==='megumi'?'shadow':p.char==='mahito'?'soul':p.char==='yuta'?'rika':p.char==='hakari'?'jackpot':'cursed');commitMove(p,1.05);p.ultUsed=true;p.animKind='ultimate';p.animTime=1.0;p.animDuration=1.0;p.ce-=45;p.ultCD=18;p.pose=.85;frameShake(24);let q=other(p);
  if(p.char==='gojo'){projectile(p,'purple200',550,69,65,{life:3.6,penetrate:true,color:'#d7a3ff'});for(let k=0;k<12;k++)arc(p.x+p.dir*16*k,p.y-76,8+k*3,k%2?'#9bc5ff':'#de9bff',1.2);msg('200% HOLLOW PURPLE!',2.1);}
  if(p.char==='sukuna'){zone(p,'furnace',q.x,FLOOR-55,250,1.35,2.3,64);for(let k=0;k<100;k++)sparks(q.x+random(-250,250),FLOOR-random(25,265),'#ff8e45',1,200);msg('FURNACE — OPEN!  TAKE COVER!',2.2);}
  if(p.char==='megumi'){summon(p,'totality',{life:8.5,y:FLOOR-65,health:45});summon(p,'dogs',{life:4.5,power:1.5});summon(p,'nue',{life:4.2,y:FLOOR-210});summon(p,'toad',{life:3.5});for(let k=0;k<7;k++)zone(p,'shadowspike',q.x+random(-190,190),FLOOR-22,65,.24+k*.28,2.7,5);msg('TEN SHADOWS: TOTALITY!',2);}
@@ -816,7 +874,7 @@ function domain(p){
  p.ce-=35;p.domainCD=29;p.castingDomain=true;
  p.animKind='domain';p.animTime=DOMAIN_CAST_DURATION;p.animDuration=DOMAIN_CAST_DURATION;p.pose=DOMAIN_CAST_DURATION;
  p.vx=0;p.vy=0;p.guard=false;p.inv=Math.max(p.inv,DOMAIN_CAST_DURATION+.3);
- if(!domainCast)sfxPlay('domain');if(!domainCast)domainCast={elapsed:0,duration:DOMAIN_CAST_DURATION,casters:[],origin:p.x};
+ if(!domainCast)ccEnergy('domain');if(!domainCast)domainCast={elapsed:0,duration:DOMAIN_CAST_DURATION,casters:[],origin:p.x};
  domainCast.casters.push(p.id);
  frameShake(8);sparks(p.x,p.y-90,roster[p.char].secondary,32,190);
  msg(roster[p.char].name.toUpperCase()+' — DOMAIN EXPANSION',2.1);
@@ -1524,7 +1582,7 @@ function burstEscape(p){
 }
 function signatureTech(p){
  const q=other(p);if(committed(p)||p.signature<100||p.signatureCooldown>0||p.stun>0||intermission>0)return false;
- commitMove(p,.7);p.signature=0;p.signatureCooldown=11;p.animKind='skill';p.animTime=.65;p.animDuration=.65;
+ ccEnergy(p.char==='sukuna'?'slashHeavy':p.char==='gojo'?'blue':ccTechniqueKind(p,0));commitMove(p,.7);p.signature=0;p.signatureCooldown=11;p.animKind='skill';p.animTime=.65;p.animDuration=.65;
  const cx=p.x+p.dir*55,cy=p.y-85;
  if(p.char==='gojo'){p.barrier=Math.max(p.barrier,2.4);p.inv=Math.max(p.inv,.25);q.slow=Math.max(q.slow,.9);floater(cx,cy-100,'INFINITY: ZERO DISTANCE','#b8d8ff',16);}
  else if(p.char==='sukuna'){for(let j=0;j<5;j++)slash(q.x+random(-80,80),q.y-random(35,140),170,random(-1,1),'#ff4772',.9,8);if(near(p,q,290))damage(p,q,17,400,{unblockable:true,hitType:'slash'});floater(cx,cy-100,'DISMANTLE: CROSSCUT','#ff7991',16);}
@@ -1650,7 +1708,7 @@ function tickDomains(dt){let active=players.filter(p=>p.domainObj);if(!active.le
   if(d.tick<=0){d.tick=.8;q.soul=clamp(q.soul+.7,0,10);let harm=1.1+q.soul*.58;damage(p,q,harm,0,{sure:true,dot:true,noMeter:true,soul:0});q.stun=Math.max(q.stun,.09);floater(q.x,q.y-170,'SOUL '+q.soul.toFixed(1),'#9fffe4',14);}
  }} }
 function tickProjectiles(dt){for(let k=projectiles.length-1;k>=0;k--){const s=projectiles[k];if(!s)continue;const p=players[s.owner],q=other(p);s.t-=dt;s.x+=s.vx*dt;s.y+=s.vy*dt;if(s.type==='blue'){q.vx+=(s.x-q.x)*Math.min(.028,dt*.9);q.slow=Math.max(q.slow,.15);}if(s.type==='purple200'){for(let t=0;t<4;t++)sparks(s.x-random(0,140)*p.dir,s.y+random(-55,55),'#caa9ff',1,180);arc(s.x,s.y,random(20,58),'#d9b2ff',.23);}if(s.type==='slash'&&Math.random()<.7)slash(s.x,s.y,105,-.5,'#ffe3ed',.3,6);
- if(Math.hypot(q.x-s.x,q.y-75-s.y)<s.r+30&&!s.hit){const unguard=['purple','purple200'].includes(s.type);damage(p,q,s.dmg,s.type==='purple200'?930:480,{unblockable:unguard,pierce:unguard});if(s.type==='blue'){q.vx=-p.dir*360;q.slow=.85;}if(intermission>0)return;sparks(s.x,s.y,s.color,27,370);if(s.penetrate){s.hit=true;}else {projectiles.splice(k,1);continue;}}
+ if(Math.hypot(q.x-s.x,q.y-75-s.y)<s.r+30&&!s.hit){if(s.type==='purple'||s.type==='purple200')ccEnergy('red',.60);else if(s.type==='slash')ccEnergy('slashHeavy',.46);const unguard=['purple','purple200'].includes(s.type);damage(p,q,s.dmg,s.type==='purple200'?930:480,{unblockable:unguard,pierce:unguard});if(s.type==='blue'){q.vx=-p.dir*360;q.slow=.85;}if(intermission>0)return;sparks(s.x,s.y,s.color,27,370);if(s.penetrate){s.hit=true;}else {projectiles.splice(k,1);continue;}}
  if(s.t<=0||s.x<-150||s.x>W+150)projectiles.splice(k,1);}}
 function tickActors(dt){for(let k=actors.length-1;k>=0;k--){const a=actors[k];if(!a)continue;const p=players[a.owner],q=other(p);a.life-=dt;a.age+=dt;a.tick-=dt;const dir=Math.sign(q.x-a.x)||p.dir;
  if(a.kind==='dogs'||a.kind==='isomer'||a.kind==='mahoraga'||a.kind==='totality'||a.kind==='ox'||a.kind==='human'||a.kind==='serpent')a.x+=(q.x-a.x)*Math.min(1,dt*(a.kind==='ox'?2.3:a.kind==='mahoraga'?2.0:a.kind==='totality'?2.7:4.0));
@@ -2335,5 +2393,5 @@ document.getElementById('comboTier').addEventListener('change',()=>{refreshCombo
 window.__cursedClashTest={getState:()=>({score:score.slice(),round,paused,gameOver,intermission,elapsed,domainCast:domainCast?{elapsed:domainCast.elapsed,casters:domainCast.casters.slice()}:null,domainDuel:domainDuel?{index:domainDuel.index,correct:domainDuel.correct,aiCorrect:domainDuel.aiCorrect,remaining:domainDuel.remaining,sequence:domainDuel.sequence.slice()}:null,finisher:cinematic?.variant||null,finisherRemaining:cinematic?.life||0,finisherBeat:cinematic?.beat||0,mode:pvp()?'pvp':'ai',error:document.getElementById('errors').textContent,players:players.map(p=>({char:p.char,x:p.x,y:p.y,hp:p.hp,meter:p.meter,awake:p.awake,domain:p.domainObj?.remaining||0,ultCD:p.ultCD,ultUsed:p.ultUsed,comboLock:p.comboLock,hitCount:p.hitCount,enderLock:p.enderLock,launchDrift:p.launchDrift,comboArt:p.comboScript?.name||null,comboTime:p.comboTime,hitOwner:p.hitOwner,linkUsed:p.linkUsed,linkCount:p.linkCount,stun:p.stun,burstCD:p.burstCD,bfHits:p.bfHits,queuedPunch:p.queuedPunch,skills:p.cool.slice()})),aiBlackFlashesThisRound:brain.bfUsed,comboTier:document.getElementById('comboTier').value,actorKinds:actors.map(a=>a.kind),activeZones:fields.map(f=>f.type),beams:beams.map(b=>b.type)}),trigger:(i,key)=>action(players[i],key),debugClash:()=>{players.forEach(p=>{p.meter=100;p.stun=0;p.ce=100;p.domainCD=0;p.domainObj=null;awaken(p);p.inv=0;});domain(players[0]);domain(players[1]);return !!domainCast||!!domainDuel;},debugSetup:(opts={})=>{const a=players[opts.attacker??0],b=other(a);a.x=350;b.x=425;a.y=b.y=FLOOR;a.vx=a.vy=b.vx=b.vy=0;a.dir=1;b.dir=-1;a.ce=100;b.ce=100;a.punchCD=0;b.punchCD=0;a.stun=b.stun=0;a.inv=b.inv=0;a.cool=[0,0,0,0];b.guard=false;brain.guard=false;brain.breath=2;brain.decision=1;return true;},testKO:(i)=>damage(players[i],players[1-i],200,0,{unblockable:true,pierce:true})};
 newMatch();paused=true;requestAnimationFrame(loop);
 })();
-</script><div id="sfxControls" style="position:fixed;right:12px;bottom:12px;z-index:510;background:#0c1025e8;color:#fff;border:1px solid #68739b;border-radius:10px;padding:9px 11px;font:12px system-ui;display:flex;align-items:center;gap:8px"><button id="sfxToggle" onclick="toggleGameSfx()" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:7px;cursor:pointer">🔊 SFX ON</button><label>Volume <input aria-label="Sound effects volume" type="range" min="0" max="100" value="58" oninput="setGameSfxVolume(this.value)" style="width:85px;vertical-align:middle"></label><select aria-label="Impact sound style" onchange="ccSetStyle(this.value)" style="background:#17213d;color:#fff;border:1px solid #66759d;border-radius:5px;padding:4px"><option value="cinematic">Cinematic impacts</option><option value="tight">Fast / crisp</option></select><button onclick="ccPreview('hit')" title="Preview M1 punch" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Punch</button><button onclick="ccPreview('blackflash')" title="Preview Black Flash" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ BF</button><button onclick="ccPreview('skill')" title="Preview technique sound" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Skill</button><span id="ccAudioStatus" style="font-size:10px;opacity:.72">Sounds loading...</span></div><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
+</script><div id="sfxControls" style="position:fixed;right:12px;bottom:12px;z-index:510;background:#0c1025e8;color:#fff;border:1px solid #68739b;border-radius:10px;padding:9px 11px;font:12px system-ui;display:flex;align-items:center;gap:8px"><button id="sfxToggle" onclick="toggleGameSfx()" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:7px;cursor:pointer">🔊 SFX ON</button><label>Volume <input aria-label="Sound effects volume" type="range" min="0" max="100" value="58" oninput="setGameSfxVolume(this.value)" style="width:85px;vertical-align:middle"></label><select aria-label="Impact sound style" onchange="ccSetStyle(this.value)" style="background:#17213d;color:#fff;border:1px solid #66759d;border-radius:5px;padding:4px"><option value="cinematic">Cinematic impacts</option><option value="tight">Fast / crisp</option></select><button onclick="ccPreview('hit')" title="Preview M1 punch" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Punch</button><button onclick="ccPreview('blackflash')" title="Preview Black Flash" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ BF</button><button onclick="ccPreview('blue')" title="Preview Blue recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Blue</button><button onclick="ccPreview('red')" title="Preview Red recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Red</button><button onclick="ccPreview('purple')" title="Preview Purple recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Purple</button><button onclick="ccPreview('slash')" title="Preview Dismantle recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Dismantle</button><span id="ccAudioStatus" style="font-size:10px;opacity:.72">Sounds loading...</span></div><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
 </body></html>
