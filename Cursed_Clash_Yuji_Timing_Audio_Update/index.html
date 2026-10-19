@@ -150,84 +150,160 @@ function ragdollCanBeHit(q,options={}){
  return !!(options.groundHit||options.blackflash||options.finisher||options.pierce||options.sure||options.dot||options.heavy||options.slam);
 }
 
-// SHONEN COMBAT AUDIO — REAL CC0 RECORDED SAMPLES, NO OSCILLATORS.
-// Sources: Lacaedemon/sparta (OpenGameArt CC0 recordings),
-// djeada/Standard-of-Iron (Nicholas A. Judy CC0 foley recordings).
-// Playback-rate variation and multi-layer samples are audio mixing, not audio synthesis.
-const SFX={volume:.64,muted:false,ready:false,last:new Map(),samples:new Map(),index:0};
-const SHONEN_SPARTA='https://raw.githubusercontent.com/Lacaedemon/sparta/main/assets/sfx/';
-const SHONEN_FIELD='https://raw.githubusercontent.com/djeada/Standard-of-Iron/main/assets/audio/sfx/';
-const SHONEN_SOUNDS={
- hit:[[SHONEN_SPARTA+'hit.wav',.98],[SHONEN_SPARTA+'hit.wav',1.09]],
- guard:[[SHONEN_SPARTA+'death.ogg',1.5],[SHONEN_FIELD+'combat/blade_clash_01.ogg',1.22]],
- heavy:[[SHONEN_FIELD+'combat/armour_hit_01.ogg',.88],[SHONEN_FIELD+'combat/stone_impact_01.ogg',.83]],
- dash:[[SHONEN_SPARTA+'rout.wav',1.45],[SHONEN_SPARTA+'shoot.wav',.92]],
- skill:[[SHONEN_SPARTA+'shoot.wav',.75],[SHONEN_SPARTA+'rout.wav',.82]],
- blackflash:[[SHONEN_FIELD+'combat/armour_hit_03.ogg',.72],[SHONEN_FIELD+'combat/sword_hit_01.ogg',.8]],
- domain:[[SHONEN_FIELD+'combat/stone_impact_01.ogg',.68],[SHONEN_SPARTA+'death.ogg',.59]],
- awaken:[[SHONEN_SPARTA+'death.ogg',.76]],
- ultimate:[[SHONEN_FIELD+'combat/sword_hit_01.ogg',.66]],
- victory:[[SHONEN_SPARTA+'victory.wav',.92]],
- ko:[[SHONEN_FIELD+'combat/stone_impact_01.ogg',.75]],
- footstep:[[SHONEN_FIELD+'movement/footstep_stone_01.ogg',1.25],[SHONEN_FIELD+'movement/footstep_stone_02.ogg',1.18],[SHONEN_FIELD+'movement/footstep_stone_03.ogg',1.14],[SHONEN_FIELD+'movement/footstep_stone_04.ogg',1.2]],
- run:[[SHONEN_FIELD+'movement/footstep_run_01.ogg',1.18],[SHONEN_FIELD+'movement/footstep_run_02.ogg',1.12],[SHONEN_FIELD+'movement/footstep_run_03.ogg',1.18],[SHONEN_FIELD+'movement/footstep_run_04.ogg',1.12]],
- jump:[[SHONEN_FIELD+'movement/jump_effort.ogg',1.28],[SHONEN_SPARTA+'shoot.wav',1.26]],
- land:[[SHONEN_FIELD+'movement/land_thud.ogg',1.12]],
- fall:[[SHONEN_FIELD+'movement/land_thud.ogg',.82]],
- air:[[SHONEN_SPARTA+'shoot.wav',1.15]],
- punchwhiff:[[SHONEN_SPARTA+'shoot.wav',1.23],[SHONEN_SPARTA+'rout.wav',1.18]],
- sword:[[SHONEN_SPARTA+'rout.wav',.93],[SHONEN_SPARTA+'shoot.wav',.78]],
- counter:[[SHONEN_FIELD+'combat/blade_clash_02.ogg',1]],
- ui:[[SHONEN_SPARTA+'select.wav',1.15]]
+// CINEMATIC SAMPLE-BASED SOUND DESIGN, NO OSCILLATORS OR GENERATED AUDIO.
+// Attribution / individual verified file paths:
+// https://github.com/Mcamento8/open-game-sfx-index (CC0 source audio).
+// Samples credited to qubodup (OGA Hits & Punches), Ogrebane (OGA Battle),
+// TinyWorlds (OGA Footsteps), Kenney (Impact/Sci-Fi/RPG Audio).
+// Processing and layering use *only existing sound recordings*.
+const CC_AUDIO_ROOT='https://raw.githubusercontent.com/Mcamento8/open-game-sfx-index/main/audio/';
+const ccHit=n=>CC_AUDIO_ROOT+'oga-hits-punches/hits/hit'+String(n).padStart(2,'0')+'.mp3.flac';
+const ccSwoosh=n=>CC_AUDIO_ROOT+'oga-battle/battle_sound_effects/swish_'+n+'.wav';
+const ccImpact=(family,n)=>CC_AUDIO_ROOT+'impact-sounds/'+family+'_'+String(n).padStart(3,'0')+'.ogg';
+const ccSF=(family,n)=>CC_AUDIO_ROOT+'sci-fi-sounds/'+family+'_'+String(n).padStart(3,'0')+'.ogg';
+const CC_SAMPLES={
+ // Different punches have different source recordings instead of resampled copies.
+ jab1:ccHit(9),jab2:ccHit(12),jab3:ccHit(23),jab4:ccHit(32),
+ solid1:ccHit(4),solid2:ccHit(6),solid3:ccHit(11),solid4:ccHit(20),
+ crushing1:ccHit(3),crushing2:ccHit(5),crushing3:ccHit(28),
+ air1:ccSwoosh(2),air2:ccSwoosh(3),air3:ccSwoosh(4),
+ step1:ccImpact('footstep_concrete',0),step2:ccImpact('footstep_concrete',1),step3:ccImpact('footstep_concrete',3),
+ gravel:CC_AUDIO_ROOT+'oga-footsteps/gravel.ogg',
+ slam1:ccImpact('impactBell_heavy',2),slam2:ccImpact('impactBell_heavy',3),
+ crack1:ccImpact('impactGlass_heavy',0),crack2:ccImpact('impactGlass_heavy',2),
+ spark1:ccSF('impactMetal',1),spark2:ccSF('impactMetal',3),
+ boom1:ccSF('explosionCrunch',0),boom2:ccSF('explosionCrunch',1),boom3:ccSF('explosionCrunch',2),
+ surge1:ccSF('forceField',0),surge2:ccSF('forceField',2),
+ burst1:ccSF('laserLarge',0),burst2:ccSF('laserLarge',2),
+ ui:ccImpact('impactGeneric_light',1)
 };
-const SHONEN_GAINS={hit:.78,guard:.65,heavy:.8,dash:.44,skill:.51,blackflash:.96,domain:.72,awaken:.65,ultimate:.85,victory:.47,ko:.82,footstep:.19,run:.25,jump:.39,land:.43,fall:.55,air:.35,punchwhiff:.35,sword:.56,counter:.72,ui:.28};
-const SHONEN_LIMITS={hit:.045,guard:.08,skill:.16,dash:.14,heavy:.11,blackflash:.12,footstep:.12,run:.12,jump:.13,land:.13,punchwhiff:.1};
+// Each cue is a hand-arranged soundtrack of samples. No synthesis.
+const CC_RECIPES={
+ hit:[['jab1',.82,1.03,0],['jab2',.8,1.02,0],['jab3',.83,1,0],['jab4',.76,.99,0]],
+ punchwhiff:[['air1',.34,1.20,0],['air2',.32,1.23,0]],
+ guard:[['spark1',.7,1.05,0],['spark2',.72,1.02,0]],
+ counter:[['spark2',.95,.9,0]],
+ heavy:[['solid1',.88,.87,0],['solid2',.84,.92,0],['solid3',.88,.90,0]],
+ air:[['air2',.60,1.12,0],['air3',.58,1.1,0]],
+ sword:[['air1',.66,.92,0],['air3',.62,.94,0]],
+ dash:[['air2',.58,.91,0],['air3',.57,1.12,0]],
+ skill:[['surge1',.54,1.07,0],['burst1',.49,1.18,0]],
+ footstep:[['step1',.19,.97,0],['step2',.18,1.03,0],['step3',.18,1,0]],
+ run:[['step3',.25,1.09,0],['step1',.23,1.12,0],['step2',.22,1.06,0]],
+ jump:[['air1',.38,1.4,0]],
+ land:[['slam2',.42,1.33,0]],
+ fall:[['solid3',.65,.83,0]],
+ awaken:[['surge2',.8,.82,0],['burst1',.6,.9,.06]],
+ domain:[['boom2',.7,.68,0],['surge1',.8,.7,.05]],
+ ultimate:[['boom3',.86,.75,0],['spark2',.7,.83,0]],
+ victory:[['surge2',.37,1.2,0]],
+ ko:[['crushing2',.9,.85,0],['boom1',.5,.84,.045]],
+ ui:[['ui',.32,1.24,0]],
+ blackflash:[['crushing1',1,.83,0],['boom1',.90,.67,.025],['spark1',.65,.92,0]]
+};
+const CC_COOLDOWNS={hit:.055,punchwhiff:.12,guard:.10,heavy:.12,footstep:.15,run:.13,jump:.18,land:.15,blackflash:.17,skill:.18,domain:1.3,awaken:.8,ultimate:.8};
+const SFX={volume:.58,muted:false,ready:false,ctx:null,master:null,compressor:null,buffers:new Map(),loading:new Map(),failed:new Set(),last:new Map(),index:new Map(),style:'cinematic',active:0};
+const ccCurrent=(type)=>CC_RECIPES[type]||CC_RECIPES.skill;
+function ccStatus(){
+ const out=document.getElementById('ccAudioStatus');if(!out)return;
+ const n=SFX.buffers.size,failed=SFX.failed.size,total=Object.keys(CC_SAMPLES).length;
+ out.textContent=failed?`Samples ${n}/${total} · ${failed} unavailable`:`Samples ${n}/${total}`;
+ out.title='Recorded CC0 sounds; requires internet. The soundtrack and cinematic remain unchanged.';
+}
 function sfxInit(){
- if(SFX.ready)return;SFX.ready=true;
- for(const [type,items] of Object.entries(SHONEN_SOUNDS)){
-  SFX.samples.set(type,items.map(([url,rate])=>{
-   const audio=new Audio(url);audio.preload='auto';audio.playbackRate=rate;
-   return {audio,rate};
-  }));
+ if(!SFX.ready){
+  SFX.ready=true;
+  for(const [key,url] of Object.entries(CC_SAMPLES)){
+   const promise=fetch(url,{mode:'cors'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.arrayBuffer()}).then(data=>{
+    if(!SFX.ctx)return data;
+    return SFX.ctx.decodeAudioData(data.slice(0));
+   }).then(result=>{
+    if(result instanceof AudioBuffer)SFX.buffers.set(key,result);
+    else SFX.pending??=new Map(),SFX.pending.set(key,result);
+    ccStatus();
+   }).catch(()=>{SFX.failed.add(key);ccStatus();});
+   SFX.loading.set(key,promise);
+  }
  }
+ if(!SFX.ctx){
+  try{
+   const AudioContextType=window.AudioContext||window.webkitAudioContext;
+   SFX.ctx=new AudioContextType({latencyHint:'interactive'});
+   SFX.master=SFX.ctx.createGain();SFX.master.gain.value=SFX.volume;
+   SFX.compressor=SFX.ctx.createDynamicsCompressor();
+   SFX.compressor.threshold.value=-13;SFX.compressor.knee.value=10;
+   SFX.compressor.ratio.value=5;SFX.compressor.attack.value=.006;SFX.compressor.release.value=.16;
+   SFX.master.connect(SFX.compressor);SFX.compressor.connect(SFX.ctx.destination);
+   if(SFX.pending){for(const [key,arr] of SFX.pending){SFX.ctx.decodeAudioData(arr.slice(0)).then(buf=>{SFX.buffers.set(key,buf);ccStatus()}).catch(()=>{SFX.failed.add(key);ccStatus()});}SFX.pending.clear();}
+  }catch(e){console.warn('SFX engine unavailable:',e.message);}
+ }
+ if(SFX.ctx&&SFX.ctx.state==='suspended')SFX.ctx.resume().catch(()=>{});
+ ccStatus();
+}
+function ccOne(key,gain=1,rate=1,delay=0,pan=0){
+ const c=SFX.ctx,buf=SFX.buffers.get(key);if(!c||!buf||SFX.muted)return false;
+ const src=c.createBufferSource();src.buffer=buf;src.playbackRate.value=rate;
+ const amp=c.createGain();amp.gain.value=gain;
+ src.connect(amp);
+ if(typeof c.createStereoPanner==='function'){const p=c.createStereoPanner();p.pan.value=pan;amp.connect(p);p.connect(SFX.master);}else amp.connect(SFX.master);
+ src.onended=()=>{try{src.disconnect();amp.disconnect()}catch(e){}};
+ src.start(c.currentTime+Math.max(0,delay));return true;
 }
 function sfxPlay(type,scale=1,force=false){
  if(SFX.muted)return;
- sfxInit();const now=performance.now()/1000;
- if(!force&&now-(SFX.last.get(type)??-10)<(SHONEN_LIMITS[type]??.07))return;
- SFX.last.set(type,now);const items=SFX.samples.get(type);if(!items?.length)return;
- const entry=items[(SFX.index++)%items.length];const voice=entry.audio.cloneNode();
- voice.playbackRate=entry.rate;voice.volume=Math.min(1,Math.max(0,SFX.volume*(SHONEN_GAINS[type]??.65)*scale));
- voice.play().catch(()=>{});
+ if(!SFX.ready)sfxInit();
+ if(SFX.ctx?.state==='suspended')SFX.ctx.resume().catch(()=>{});
+ const now=performance.now()/1000;
+ if(!force&&now-(SFX.last.get(type)??-10)<(CC_COOLDOWNS[type]??.075))return;
+ SFX.last.set(type,now);
+ const recipe=ccCurrent(type),n=SFX.index.get(type)||0;
+ SFX.index.set(type,n+1);
+ const layer=recipe[n%recipe.length];
+ if(!layer)return;
+ let [key,gain,rate,delay]=layer;
+ // The "cinematic" mode adds a real recording beneath powerful hits.
+ const tight=SFX.style==='tight';
+ const b=type==='heavy'&&!tight?.94:1;
+ ccOne(key,gain*scale*b,rate,delay,(n%3-1)*.08);
+ if(type==='heavy'&&!tight)ccOne('slam2',.22*scale,.91,.034);
+ if(type==='guard'&&!tight)ccOne('air3',.12*scale,1.05,.01);
+ if(type==='ultimate'&&!tight)ccOne('crack2',.29*scale,.93,.038);
 }
 function sfxBlackFlash(){
- sfxPlay('blackflash',1,true);
- // A layered recording adds weight without synthesizing a sound.
- sfxPlay('heavy',.5,true);
+ if(SFX.muted)return;
+ if(!SFX.ready)sfxInit();
+ if(SFX.ctx?.state==='suspended')SFX.ctx.resume().catch(()=>{});
+ const n=SFX.index.get('blackflash')||0;SFX.index.set('blackflash',n+1);
+ // Three separate real sounds: bass explosion, physical hit, electric crack.
+ ccOne(['crushing1','crushing2','crushing3'][n%3],.87,.84,0);
+ ccOne(['boom1','boom2'][n%2],.64,.82,.025);
+ ccOne(['spark1','spark2'][n%2],.62,.92,.012);
 }
-// Per-fighter steps and landings; no audio on frozen cinematic frames.
 function tickMovementSfx(dt){
  if(cinematic||paused||gameOver||intermission>0||domainCast||domainDuel)return;
  for(const p of players){
   if(!p||p.hp<=0)continue;
   const airborne=p.y<FLOOR-8;
-  if(p.__wasAirborne&&!airborne&&p.vy>=0)sfxPlay('land',p.ragdoll>0?1.35:1);
+  if(p.__wasAirborne&&!airborne&&p.vy>=0)sfxPlay('land',p.ragdoll>0?1.2:1);
   p.__wasAirborne=airborne;
   p.__stepClock=(p.__stepClock||0)-dt;
   if(!airborne&&p.ragdoll<=0&&p.stun<=0&&Math.abs(p.vx)>80&&p.__stepClock<=0){
    const fast=Math.abs(p.vx)>320;
-   sfxPlay(fast?'run':'footstep',.82);
-   p.__stepClock=fast?.17:.29;
+   sfxPlay(fast?'run':'footstep',.9);
+   p.__stepClock=fast?.17:.27;
   }
  }
 }
 window.addEventListener('pointerdown',sfxInit,{passive:true,once:true});
 window.addEventListener('keydown',sfxInit,{passive:true,once:true});
+window.addEventListener('load',()=>{sfxInit();ccStatus()},{once:true});
 function toggleGameSfx(){sfxInit();SFX.muted=!SFX.muted;document.getElementById('sfxToggle').textContent=SFX.muted?'🔇 SFX OFF':'🔊 SFX ON';}
-function setGameSfxVolume(v){SFX.volume=Number(v)/100;}
-window.toggleGameSfx=toggleGameSfx;
-window.setGameSfxVolume=setGameSfxVolume;
-window.__ccSfxTest={play:sfxPlay,state:SFX};
+function setGameSfxVolume(v){SFX.volume=Number(v)/100;if(SFX.master)SFX.master.gain.value=SFX.volume;}
+function ccSetStyle(v){SFX.style=v;}
+function ccPreview(type){sfxInit();if(type==='blackflash')sfxBlackFlash();else sfxPlay(type,1,true);}
+window.toggleGameSfx=toggleGameSfx;window.setGameSfxVolume=setGameSfxVolume;
+window.ccSetStyle=ccSetStyle;window.ccPreview=ccPreview;
+window.__ccSfxTest={play:sfxPlay,state:SFX,preview:ccPreview};
 function damage(p,q,amount,knock=330,options={}){
  if(!p||!q||gameOver||intermission>0||q.hp<=0||!ragdollCanBeHit(q,options))return false;
  if(q.inv>0&&!options.sure&&!options.pierce)return false;
@@ -2265,5 +2341,5 @@ document.getElementById('comboTier').addEventListener('change',()=>{refreshCombo
 window.__cursedClashTest={getState:()=>({score:score.slice(),round,paused,gameOver,intermission,elapsed,domainCast:domainCast?{elapsed:domainCast.elapsed,casters:domainCast.casters.slice()}:null,domainDuel:domainDuel?{index:domainDuel.index,correct:domainDuel.correct,aiCorrect:domainDuel.aiCorrect,remaining:domainDuel.remaining,sequence:domainDuel.sequence.slice()}:null,finisher:cinematic?.variant||null,finisherRemaining:cinematic?.life||0,finisherBeat:cinematic?.beat||0,mode:pvp()?'pvp':'ai',error:document.getElementById('errors').textContent,players:players.map(p=>({char:p.char,x:p.x,y:p.y,hp:p.hp,meter:p.meter,awake:p.awake,domain:p.domainObj?.remaining||0,ultCD:p.ultCD,ultUsed:p.ultUsed,comboLock:p.comboLock,hitCount:p.hitCount,enderLock:p.enderLock,launchDrift:p.launchDrift,comboArt:p.comboScript?.name||null,comboTime:p.comboTime,hitOwner:p.hitOwner,linkUsed:p.linkUsed,linkCount:p.linkCount,stun:p.stun,burstCD:p.burstCD,bfHits:p.bfHits,queuedPunch:p.queuedPunch,skills:p.cool.slice()})),aiBlackFlashesThisRound:brain.bfUsed,comboTier:document.getElementById('comboTier').value,actorKinds:actors.map(a=>a.kind),activeZones:fields.map(f=>f.type),beams:beams.map(b=>b.type)}),trigger:(i,key)=>action(players[i],key),debugClash:()=>{players.forEach(p=>{p.meter=100;p.stun=0;p.ce=100;p.domainCD=0;p.domainObj=null;awaken(p);p.inv=0;});domain(players[0]);domain(players[1]);return !!domainCast||!!domainDuel;},debugSetup:(opts={})=>{const a=players[opts.attacker??0],b=other(a);a.x=350;b.x=425;a.y=b.y=FLOOR;a.vx=a.vy=b.vx=b.vy=0;a.dir=1;b.dir=-1;a.ce=100;b.ce=100;a.punchCD=0;b.punchCD=0;a.stun=b.stun=0;a.inv=b.inv=0;a.cool=[0,0,0,0];b.guard=false;brain.guard=false;brain.breath=2;brain.decision=1;return true;},testKO:(i)=>damage(players[i],players[1-i],200,0,{unblockable:true,pierce:true})};
 newMatch();paused=true;requestAnimationFrame(loop);
 })();
-</script><div id="sfxControls" style="position:fixed;right:12px;bottom:12px;z-index:510;background:#0c1025e8;color:#fff;border:1px solid #68739b;border-radius:10px;padding:9px 11px;font:12px system-ui;display:flex;align-items:center;gap:8px"><button id="sfxToggle" onclick="toggleGameSfx()" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:7px;cursor:pointer">🔊 SFX ON</button><label>Volume <input aria-label="Sound effects volume" type="range" min="0" max="100" value="58" oninput="setGameSfxVolume(this.value)" style="width:85px;vertical-align:middle"></label></div><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
+</script><div id="sfxControls" style="position:fixed;right:12px;bottom:12px;z-index:510;background:#0c1025e8;color:#fff;border:1px solid #68739b;border-radius:10px;padding:9px 11px;font:12px system-ui;display:flex;align-items:center;gap:8px"><button id="sfxToggle" onclick="toggleGameSfx()" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:7px;cursor:pointer">🔊 SFX ON</button><label>Volume <input aria-label="Sound effects volume" type="range" min="0" max="100" value="58" oninput="setGameSfxVolume(this.value)" style="width:85px;vertical-align:middle"></label><select aria-label="Impact sound style" onchange="ccSetStyle(this.value)" style="background:#17213d;color:#fff;border:1px solid #66759d;border-radius:5px;padding:4px"><option value="cinematic">Cinematic impacts</option><option value="tight">Fast / crisp</option></select><button onclick="ccPreview('hit')" title="Preview M1 punch" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Punch</button><button onclick="ccPreview('blackflash')" title="Preview Black Flash" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ BF</button><span id="ccAudioStatus" style="font-size:10px;opacity:.72">Sounds loading...</span></div><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
 </body></html>
