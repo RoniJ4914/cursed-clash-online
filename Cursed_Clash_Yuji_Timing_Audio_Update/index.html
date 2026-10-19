@@ -150,50 +150,76 @@ function ragdollCanBeHit(q,options={}){
  return !!(options.groundHit||options.blackflash||options.finisher||options.pierce||options.sure||options.dot||options.heavy||options.slam);
 }
 
-// Recorded CC0 SFX by Kenney, served from a community-maintained GitHub asset archive.
-// No oscillator, noise, or procedurally generated combat sounds.
-const SFX={volume:.58,muted:false,ready:false,last:new Map(),samples:new Map(),index:0};
-const CC_SFX_BASE='https://raw.githubusercontent.com/GeorgeQLe/assets-sfx-combat/main/assets/kenney/';
-const CC_SFX_PATHS={
- hit:['impact-sounds/Audio/impactPlate_light_002.ogg','impact-sounds/Audio/impactPlate_medium_000.ogg'],
- guard:['impact-sounds/Audio/impactMetal_heavy_001.ogg','impact-sounds/Audio/impactMetal_heavy_002.ogg'],
- heavy:['impact-sounds/Audio/impactPlate_heavy_000.ogg','impact-sounds/Audio/impactMetal_heavy_000.ogg'],
- dash:['sci-fi-sounds/Audio/laserSmall_001.ogg','sci-fi-sounds/Audio/laserSmall_002.ogg'],
- skill:['sci-fi-sounds/Audio/laserSmall_001.ogg','sci-fi-sounds/Audio/laserSmall_002.ogg'],
- blackflash:['sci-fi-sounds/Audio/explosionCrunch_000.ogg','sci-fi-sounds/Audio/explosionCrunch_001.ogg'],
- domain:['sci-fi-sounds/Audio/explosionCrunch_002.ogg'],
- awaken:['sci-fi-sounds/Audio/engineCircular_003.ogg'],
- ultimate:['sci-fi-sounds/Audio/explosionCrunch_003.ogg'],
- victory:['sci-fi-sounds/Audio/laserSmall_001.ogg'],
- ko:['impact-sounds/Audio/impactPlate_heavy_001.ogg']
+// SHONEN COMBAT AUDIO — REAL CC0 RECORDED SAMPLES, NO OSCILLATORS.
+// Sources: Lacaedemon/sparta (OpenGameArt CC0 recordings),
+// djeada/Standard-of-Iron (Nicholas A. Judy CC0 foley recordings).
+// Playback-rate variation and multi-layer samples are audio mixing, not audio synthesis.
+const SFX={volume:.64,muted:false,ready:false,last:new Map(),samples:new Map(),index:0};
+const SHONEN_SPARTA='https://raw.githubusercontent.com/Lacaedemon/sparta/main/assets/sfx/';
+const SHONEN_FIELD='https://raw.githubusercontent.com/djeada/Standard-of-Iron/main/assets/audio/sfx/';
+const SHONEN_SOUNDS={
+ hit:[[SHONEN_SPARTA+'hit.wav',.98],[SHONEN_SPARTA+'hit.wav',1.09]],
+ guard:[[SHONEN_SPARTA+'death.ogg',1.5],[SHONEN_FIELD+'combat/blade_clash_01.ogg',1.22]],
+ heavy:[[SHONEN_FIELD+'combat/armour_hit_01.ogg',.88],[SHONEN_FIELD+'combat/stone_impact_01.ogg',.83]],
+ dash:[[SHONEN_SPARTA+'rout.wav',1.45],[SHONEN_SPARTA+'shoot.wav',.92]],
+ skill:[[SHONEN_SPARTA+'shoot.wav',.75],[SHONEN_SPARTA+'rout.wav',.82]],
+ blackflash:[[SHONEN_FIELD+'combat/armour_hit_03.ogg',.72],[SHONEN_FIELD+'combat/sword_hit_01.ogg',.8]],
+ domain:[[SHONEN_FIELD+'combat/stone_impact_01.ogg',.68],[SHONEN_SPARTA+'death.ogg',.59]],
+ awaken:[[SHONEN_SPARTA+'death.ogg',.76]],
+ ultimate:[[SHONEN_FIELD+'combat/sword_hit_01.ogg',.66]],
+ victory:[[SHONEN_SPARTA+'victory.wav',.92]],
+ ko:[[SHONEN_FIELD+'combat/stone_impact_01.ogg',.75]],
+ footstep:[[SHONEN_FIELD+'movement/footstep_stone_01.ogg',1.25],[SHONEN_FIELD+'movement/footstep_stone_02.ogg',1.18],[SHONEN_FIELD+'movement/footstep_stone_03.ogg',1.14],[SHONEN_FIELD+'movement/footstep_stone_04.ogg',1.2]],
+ run:[[SHONEN_FIELD+'movement/footstep_run_01.ogg',1.18],[SHONEN_FIELD+'movement/footstep_run_02.ogg',1.12],[SHONEN_FIELD+'movement/footstep_run_03.ogg',1.18],[SHONEN_FIELD+'movement/footstep_run_04.ogg',1.12]],
+ jump:[[SHONEN_FIELD+'movement/jump_effort.ogg',1.28],[SHONEN_SPARTA+'shoot.wav',1.26]],
+ land:[[SHONEN_FIELD+'movement/land_thud.ogg',1.12]],
+ fall:[[SHONEN_FIELD+'movement/land_thud.ogg',.82]],
+ air:[[SHONEN_SPARTA+'shoot.wav',1.15]],
+ punchwhiff:[[SHONEN_SPARTA+'shoot.wav',1.23],[SHONEN_SPARTA+'rout.wav',1.18]],
+ sword:[[SHONEN_SPARTA+'rout.wav',.93],[SHONEN_SPARTA+'shoot.wav',.78]],
+ counter:[[SHONEN_FIELD+'combat/blade_clash_02.ogg',1]],
+ ui:[[SHONEN_SPARTA+'select.wav',1.15]]
 };
-const CC_SFX_GAINS={hit:.72,guard:.66,heavy:.90,dash:.50,skill:.56,blackflash:1,domain:.9,awaken:.8,ultimate:1,victory:.55,ko:.85};
+const SHONEN_GAINS={hit:.78,guard:.65,heavy:.8,dash:.44,skill:.51,blackflash:.96,domain:.72,awaken:.65,ultimate:.85,victory:.47,ko:.82,footstep:.19,run:.25,jump:.39,land:.43,fall:.55,air:.35,punchwhiff:.35,sword:.56,counter:.72,ui:.28};
+const SHONEN_LIMITS={hit:.045,guard:.08,skill:.16,dash:.14,heavy:.11,blackflash:.12,footstep:.12,run:.12,jump:.13,land:.13,punchwhiff:.1};
 function sfxInit(){
- if(SFX.ready)return;
- SFX.ready=true;
- for(const [type,paths] of Object.entries(CC_SFX_PATHS)){
-  SFX.samples.set(type,paths.map(path=>{
-   const audio=new Audio(CC_SFX_BASE+path);
-   audio.preload='auto';
-   audio.load();
-   return audio;
+ if(SFX.ready)return;SFX.ready=true;
+ for(const [type,items] of Object.entries(SHONEN_SOUNDS)){
+  SFX.samples.set(type,items.map(([url,rate])=>{
+   const audio=new Audio(url);audio.preload='auto';audio.playbackRate=rate;
+   return {audio,rate};
   }));
  }
 }
-function sfxPlay(type,scale=1){
+function sfxPlay(type,scale=1,force=false){
  if(SFX.muted)return;
- sfxInit();
- const now=performance.now()/1000;
- const limited={hit:.045,guard:.07,skill:.16,dash:.13,heavy:.14,blackflash:.13};
- if(now-(SFX.last.get(type)??-10)<(limited[type]??.04))return;
- SFX.last.set(type,now);
- const samples=SFX.samples.get(type);
- if(!samples?.length)return;
- const sample=samples[SFX.index++%samples.length];
- // Clone permits overlapping hits; unlike reusing one audio element, new strikes do not cut off earlier ones.
- const voice=sample.cloneNode();
- voice.volume=Math.max(0,Math.min(1,SFX.volume*(CC_SFX_GAINS[type]??.7)*Math.max(.5,Math.min(1.5,scale))));
- voice.play().catch(()=>{}); // Browsers may block audio until the first interaction.
+ sfxInit();const now=performance.now()/1000;
+ if(!force&&now-(SFX.last.get(type)??-10)<(SHONEN_LIMITS[type]??.07))return;
+ SFX.last.set(type,now);const items=SFX.samples.get(type);if(!items?.length)return;
+ const entry=items[(SFX.index++)%items.length];const voice=entry.audio.cloneNode();
+ voice.playbackRate=entry.rate;voice.volume=Math.min(1,Math.max(0,SFX.volume*(SHONEN_GAINS[type]??.65)*scale));
+ voice.play().catch(()=>{});
+}
+function sfxBlackFlash(){
+ sfxPlay('blackflash',1,true);
+ // A layered recording adds weight without synthesizing a sound.
+ sfxPlay('heavy',.5,true);
+}
+// Per-fighter steps and landings; no audio on frozen cinematic frames.
+function tickMovementSfx(dt){
+ if(cinematic||paused||gameOver||intermission>0||domainCast||domainDuel)return;
+ for(const p of players){
+  if(!p||p.hp<=0)continue;
+  const airborne=p.y<FLOOR-8;
+  if(p.__wasAirborne&&!airborne&&p.vy>=0)sfxPlay('land',p.ragdoll>0?1.35:1);
+  p.__wasAirborne=airborne;
+  p.__stepClock=(p.__stepClock||0)-dt;
+  if(!airborne&&p.ragdoll<=0&&p.stun<=0&&Math.abs(p.vx)>80&&p.__stepClock<=0){
+   const fast=Math.abs(p.vx)>320;
+   sfxPlay(fast?'run':'footstep',.82);
+   p.__stepClock=fast?.17:.29;
+  }
+ }
 }
 window.addEventListener('pointerdown',sfxInit,{passive:true,once:true});
 window.addEventListener('keydown',sfxInit,{passive:true,once:true});
@@ -202,7 +228,6 @@ function setGameSfxVolume(v){SFX.volume=Number(v)/100;}
 window.toggleGameSfx=toggleGameSfx;
 window.setGameSfxVolume=setGameSfxVolume;
 window.__ccSfxTest={play:sfxPlay,state:SFX};
-
 function damage(p,q,amount,knock=330,options={}){
  if(!p||!q||gameOver||intermission>0||q.hp<=0||!ragdollCanBeHit(q,options))return false;
  if(q.inv>0&&!options.sure&&!options.pierce)return false;
@@ -1358,7 +1383,7 @@ function blackFlash(p){
    p.bfChainTimer=7;
  }else p.bfChain=0;
  p.bfWindow=0;p.bfCD=yuji?0:4.5;
- p.bfHits++;sfxPlay('blackflash');p.ce=clamp(p.ce+12,0,100);
+ p.bfHits++;sfxBlackFlash();p.ce=clamp(p.ce+12,0,100);
  if(p.awake<=0)p.meter=clamp(p.meter+(yuji?6:3),0,100);
  p.inv=.28;frameShake(26);q.inv=0;
  blackFlashScenes.push({char:p.char,x:q.x,y:q.y-77,originX:p.x,originY:p.y-78,dir:p.dir,life:.76,max:.76,seed:Math.random()*6.28});
@@ -1387,7 +1412,7 @@ function punch(p){
  const q=other(p),finalYujiM1=p.char==='yuji'&&p.yujiOneM1>0,stage=finalYujiM1?1:p.comboTime>0?(p.hitCount%4)+1:1;
  const contact=near(p,q,finalYujiM1?150:108)&&(q.x-p.x)*p.dir>-32&&!q.inv&&!q.ragdoll;
  p.animKind='punch';p.animTime=.24;p.animDuration=.24;p.pose=.22;p.punchCD=stage===4?.72:.225;commitMove(p,stage===4?.45:.18);
- if(!contact||q.hp<=0){p.bfWindow=0;p.hitCount=0;p.comboTime=0;p.linkUsed=false;p.linkCount=0;return false;}
+ if(!contact||q.hp<=0){sfxPlay('punchwhiff');p.bfWindow=0;p.hitCount=0;p.comboTime=0;p.linkUsed=false;p.linkCount=0;return false;}
  if(stage===1){p.linkUsed=false;p.linkCount=0;}
  const finisher=stage===4,amount=finalYujiM1?10:finisher?12:stage===3?7:5.5;
  const c=controls[p.id];
@@ -1515,7 +1540,7 @@ function action(p,key){
  // Absolute combat lock: no attacks, Black Flash, skills, jumps, awakenings or
  // domains during hitstun. Only a paid burst escape is legal.
  if(p.stun>0){p.queuedPunch=0;if(key===c.dash)burstEscape(p);return;}
- if(key===c.jump&&p.y>=FLOOR-.1&&!p.guard){p.vy=-720;sparks(p.x,FLOOR,'#b3b7d5',10,140);}
+ if(key===c.jump&&p.y>=FLOOR-.1&&!p.guard){sfxPlay('jump');p.vy=-720;sparks(p.x,FLOOR,'#b3b7d5',10,140);}
  if(key===c.dash&&down.has(c.guard)&&p.signature>=100&&p.signatureCooldown<=0){signatureTech(p);return;}
  if(key===c.dash&&p.enderLock>0&&p.comboRecovery>0&&p.ce>=18&&p.dashCD<=0){
    const q=other(p);p.ce-=18;p.enderLock=0;p.comboRecovery=0;p.punchCD=.19;p.dashCD=1.8;
@@ -1734,6 +1759,7 @@ function tick(dt){if(paused)return;
  if((p.id===0||pvp())&&p.queuedPunch>0&&!committed(p)&&p.punchCD<=0&&p.stun<=0&&p.comboTime>0&&p.hitCount>0){p.queuedPunch=0;punch(p);}
  if(p.stun<=0&&p.char==='gojo'&&p.counter>0&&near(p,q,112)&&q.pose>0){p.x=clamp(q.x-p.dir*90,35,W-35);damage(p,q,24,555,{unblockable:true});p.counter=0;p.barrier=0;floater(q.x,q.y-174,'COUNTERED','#a5dcff',19);sparks(q.x,q.y-90,'#d3f2ff',50,350);}
  }
+ tickMovementSfx(dt);
  tickComboArts(dt);
  tickAI(dt);
  tickDomains(dt);if(intermission>0)return;tickProjectiles(dt);if(intermission>0)return;tickActors(dt);if(intermission>0)return;tickZones(dt);if(intermission>0)return;tickBeams(dt);
