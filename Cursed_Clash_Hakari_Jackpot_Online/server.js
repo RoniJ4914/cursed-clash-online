@@ -6,7 +6,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const PORT=Number(process.env.PORT||3000),HOST=process.env.HOST||'0.0.0.0';
 const MAX_MESSAGE=3_000_000,MAX_ROOMS=500,ROOM_TIMEOUT=1000*60*30;
-const BUILD_ID='socket-epipe-guard-2026-10-19-v2';
+const BUILD_ID='native-state-replication-2026-10-19-v1';
 const rooms=new Map(),connections=new Set();
 const HTML=fs.readFileSync(path.join(__dirname,'index.html'));
 // Guard *every* socket write. EPIPE means the peer is already gone; it must
@@ -76,6 +76,13 @@ function handle(c,m){if(!m||typeof m!=='object'||Array.isArray(m)||typeof m.type
  if(m.type==='finisherAudio'&&c===r.host){if(m.sound==='yujiSecret')send(r.guest,{type:'finisherAudio',sound:m.sound});return;}
  if(m.type==='jackpotAudio'&&c===r.host){if(m.action==='start'||m.action==='stop')send(r.guest,{type:'jackpotAudio',action:m.action});return;}
  if(m.type==='domainAudio'&&c===r.host){if(chars.has(m.character))send(r.guest,{type:'domainAudio',character:m.character});return;}
+ if(m.type==='state'&&c===r.host){
+  const now=Date.now();if(now-r.lastFrame<42)return;
+  if(!Number.isSafeInteger(m.sequence)||m.sequence<=r.lastSequence)return;
+  if(!m.data||typeof m.data!=='object'||!Array.isArray(m.data.players)||m.data.players.length!==2)return;
+  r.lastFrame=now;r.lastSequence=m.sequence;
+  send(r.guest,{type:'state',sequence:m.sequence,data:m.data});return;
+ }
  if(m.type==='frame'&&c===r.host){const now=Date.now();if(now-r.lastFrame<90)return;if(!Number.isSafeInteger(m.sequence)||m.sequence<=r.lastSequence)return;if(typeof m.data!=='string'||!m.data.startsWith('data:image/webp;base64,')||m.data.length>MAX_MESSAGE-100)return;r.lastFrame=now;r.lastSequence=m.sequence;c.framesIn++;
   if(!send(r.guest,{type:'frame',sequence:m.sequence,data:m.data})){
     const dropped=(r.droppedFrames=(r.droppedFrames||0)+1);
