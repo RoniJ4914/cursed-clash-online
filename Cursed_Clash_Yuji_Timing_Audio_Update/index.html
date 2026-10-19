@@ -193,7 +193,6 @@ const CC_RECIPES={
  jump:[['air1',.38,1.4,0]],
  land:[['slam2',.42,1.33,0]],
  fall:[['solid3',.65,.83,0]],
- awaken:[['cePulse',.76,.79,0],['ceSpell',.45,1.18,0]],
  domain:[['ceSpell',.77,.85,0],['cePulse',.75,.75,0]],
  ultimate:[['ceSpell',.84,.93,0],['cePulse',.90,.82,0]],
  victory:[['slam1',.45,1.1,0]],
@@ -201,7 +200,7 @@ const CC_RECIPES={
  ui:[['ui',.32,1.24,0]],
  blackflash:[['crushing1',.96,1.0,0],['crushing2',.96,1.02,0],['crushing3',.96,.98,0]]
 };
-const CC_COOLDOWNS={hit:.055,punchwhiff:.12,guard:.10,heavy:.12,footstep:.15,run:.13,jump:.18,land:.15,blackflash:.17,skill:.18,domain:1.3,awaken:.8,ultimate:.8};
+const CC_COOLDOWNS={hit:.055,punchwhiff:.12,guard:.10,heavy:.12,footstep:.15,run:.13,jump:.18,land:.15,blackflash:.17,skill:.18,domain:1.3,ultimate:.8};
 const SFX={volume:.58,muted:false,ready:false,ctx:null,master:null,compressor:null,buffers:new Map(),loading:new Map(),failed:new Set(),last:new Map(),index:new Map(),style:'cinematic',active:0};
 const ccCurrent=(type)=>CC_RECIPES[type]||CC_RECIPES.skill;
 function ccStatus(){
@@ -250,6 +249,7 @@ function ccOne(key,gain=1,rate=1,delay=0,pan=0,limit=0){
  const when=c.currentTime+Math.max(0,delay);src.start(when);if(limit>0)src.stop(when+limit);return true;
 }
 function sfxPlay(type,scale=1,force=false){
+ if(type==='awaken'||type==='awakening')return;
  if(SFX.muted)return;
  if(!SFX.ready)sfxInit();
  if(SFX.ctx?.state==='suspended')SFX.ctx.resume().catch(()=>{});
@@ -351,6 +351,7 @@ function ccGojoVolume(){
  }
 }
 function ccEnergy(type,scale=1){
+ if(type==='awakening')return; // No awakening SFX
  // Character-specific JJK recordings replace the former fantasy-spell/sci-fi layers.
  if(Object.prototype.hasOwnProperty.call(GOJO_JJK_CLIPS,type)){
   ccGojoRecorded(type,scale);return;
@@ -387,11 +388,79 @@ function ccEnergy(type,scale=1){
    hit('cePulse',.58,1.30,0,.55);hit('crack1',.34,1.15,.085);break;
   case 'domain':
    hit('ceSpell',.80,.69,0,1.40);hit('slam1',.58,.68,.20);break;
-  case 'awakening':
-   hit('ceSpell',.63,1.08,0,1.15);hit('cePulse',.57,.8,.22,.65);break;
+  case 'awakening': break; // Transformations intentionally have no audio
   default:hit('cePulse',.52,1.0,0,.65);break;
  }
 }
+
+// Character-specific DOMAIN callout recordings, from JJK fan-uploaded soundboards.
+// These are not licensed releases: production sites should replace with recordings they can use.
+// Some game domains have no official voice recording (Yuki's/Yuji's names are invented in-game).
+const CC_DOMAIN_VOICES={
+ gojo:{url:'https://www.myinstants.com/media/sounds/gojo-satoru-domain-expansion-infinite-void_1.mp3',name:'MURYŌKŪSHO',cut:3.8},
+ sukuna:{url:'https://www.myinstants.com/media/sounds/domain-expansion-sukuna.mp3',name:'FUKUMA MIZUSHI',cut:3.8},
+ mahito:{url:'https://www.myinstants.com/media/sounds/mahito-domain-expansion.mp3',name:'JIHEI ENDONKA',cut:3.8},
+ hakari:{url:'https://www.myinstants.com/media/sounds/hakari-domain-expansion.mp3',name:'ZASATSU BAKUTO',cut:3.8,fan:true},
+ yuji:{url:'https://www.myinstants.com/media/sounds/yuji-domain.mp3',name:'BENEVOLENT HOMETOWN',cut:3.6,fan:true}
+};
+const CC_DOMAIN_CHANNELS=new Map();
+function ccStopDomainCall(char){
+ const ch=CC_DOMAIN_CHANNELS.get(char);if(!ch)return;
+ try{ch.sound.pause();ch.sound.currentTime=0;}catch(e){}
+ if(ch.timer)clearInterval(ch.timer);
+ CC_DOMAIN_CHANNELS.delete(char);
+}
+function ccDomainVolume(){
+ for(const ch of CC_DOMAIN_CHANNELS.values()){
+  const left=ch.cut-(performance.now()-ch.start)/1000;
+  try{ch.sound.volume=SFX.muted?0:Math.min(1,Math.max(0,SFX.volume*.90*Math.min(1,left/.19)));}catch(e){}
+ }
+}
+function ccPlayDomainCall(char,fromRelay=false){
+ // A clean domain activation: voice callout starts on the very first expansion frame.
+ // No voice is invented for noncanonical domains. Their proper game label remains visible.
+ if(!fromRelay&&onlineHost()&&onlineStreaming)onlineSend({type:'domainAudio',character:char});
+ if(SFX.muted)return;
+ const cfg=CC_DOMAIN_VOICES[char];if(!cfg)return;
+ ccStopDomainCall(char);
+ const a=new Audio(cfg.url);
+ a.preload='auto';
+ a.volume=Math.min(1,SFX.volume*.90);
+ const ch={sound:a,start:performance.now(),cut:cfg.cut,timer:null};
+ CC_DOMAIN_CHANNELS.set(char,ch);
+ const stop=()=>{if(CC_DOMAIN_CHANNELS.get(char)===ch)ccStopDomainCall(char);};
+ a.addEventListener('ended',stop,{once:true});
+ a.addEventListener('error',()=>{console.warn('JJK domain voice unavailable:',char,'(remote recording)');stop();},{once:true});
+ ch.timer=setInterval(()=>{
+  if(CC_DOMAIN_CHANNELS.get(char)!==ch)return;
+  if((performance.now()-ch.start)/1000>=ch.cut||a.currentTime>=ch.cut){stop();return;}
+  ccDomainVolume();
+ },30);
+ try{const result=a.play();if(result&&typeof result.catch==='function')result.catch(()=>{console.warn('Domain voice blocked or inaccessible:',char);stop();});}
+ catch(e){console.warn('Domain voice failed:',char,e);stop();}
+}
+// Optional: a player may bring their own permitted/recorded domain voice file.
+// Overrides are session-only: nothing is uploaded to the room server or shared with others.
+const CC_DOMAIN_OVERRIDES=new Set();
+function ccLoadDomainFile(el){
+ const file=el?.files?.[0],selector=document.getElementById('ccVoiceCharacter');
+ const char=selector?.value;
+ if(!file||!char||!file.type.startsWith('audio/'))return;
+ const previous=CC_DOMAIN_VOICES[char];
+ ccStopDomainCall(char);
+ if(CC_DOMAIN_OVERRIDES.has(char)&&previous?.url?.startsWith('blob:'))URL.revokeObjectURL(previous.url);
+ const url=URL.createObjectURL(file);
+ CC_DOMAIN_VOICES[char]={url,name:file.name,cut:4.0,local:true};
+ CC_DOMAIN_OVERRIDES.add(char);
+ const status=document.getElementById('ccVoiceStatus');
+ if(status)status.textContent=`${char.toUpperCase()} voice ready`;
+ ccPlayDomainCall(char,true);
+ el.value='';
+}
+function ccPreviewDomain(char){sfxInit();ccPlayDomainCall(char,true);}
+window.ccPreviewDomain=ccPreviewDomain;
+window.ccLoadDomainFile=ccLoadDomainFile;
+
 function ccTechniqueKind(p,j){
  if(p.char==='gojo')return p.awake>0?(['blue','red','cursed','purple'][j]):(['blue','red','cursed','cursed'][j]);
  if(p.char==='sukuna')return p.awake>0?(['slash','slashHeavy','cursed','slashHeavy'][j]):(['slash','slashHeavy','slash','slash'][j]);
@@ -432,10 +501,10 @@ function tickMovementSfx(dt){
 window.addEventListener('pointerdown',sfxInit,{passive:true,once:true});
 window.addEventListener('keydown',sfxInit,{passive:true,once:true});
 window.addEventListener('load',()=>{sfxInit();ccStatus()},{once:true});
-function toggleGameSfx(){sfxInit();SFX.muted=!SFX.muted;document.getElementById('sfxToggle').textContent=SFX.muted?'🔇 SFX OFF':'🔊 SFX ON';ccGojoVolume();}
-function setGameSfxVolume(v){SFX.volume=Number(v)/100;if(SFX.master)SFX.master.gain.value=SFX.volume;ccGojoVolume();}
+function toggleGameSfx(){sfxInit();SFX.muted=!SFX.muted;document.getElementById('sfxToggle').textContent=SFX.muted?'🔇 SFX OFF':'🔊 SFX ON';ccGojoVolume();ccDomainVolume();}
+function setGameSfxVolume(v){SFX.volume=Number(v)/100;if(SFX.master)SFX.master.gain.value=SFX.volume;ccGojoVolume();ccDomainVolume();}
 function ccSetStyle(v){SFX.style=v;}
-function ccPreview(type){sfxInit();if(type==='blackflash')sfxBlackFlash();else if(['blue','red','purple','slash','cursed','domain'].includes(type))ccEnergy(type);else sfxPlay(type,1,true);}
+function ccPreview(type){sfxInit();if(type==='blackflash')sfxBlackFlash();else if(['blue','red','purple','slash','cursed'].includes(type))ccEnergy(type);else if(type==='domain')ccPlayDomainCall('gojo');else sfxPlay(type,1,true);}
 window.toggleGameSfx=toggleGameSfx;window.setGameSfxVolume=setGameSfxVolume;
 window.ccSetStyle=ccSetStyle;window.ccPreview=ccPreview;
 window.__ccSfxTest={play:sfxPlay,state:SFX,preview:ccPreview};
@@ -937,7 +1006,7 @@ function cast(p,j){if(committed(p))return;const q=other(p),aw=p.awake>0;
 
 
 }
-function awaken(p){if(committed(p)||p.meter<100||p.awake>0||p.stun>0||intermission>0||gameOver)return;ccEnergy('awakening');commitMove(p,.85);p.meter=0;p.awake=22;p.ultUsed=false;p.ce=100;p.hp=Math.min(100,p.hp+14);p.inv=.8;p.cool=[0,0,0,0];frameShake(16);sparks(p.x,p.y-95,'#ffe8a2',105,530);for(let k=0;k<6;k++)arc(p.x,p.y-85,18+k*16,'#ffe39d',1+k*.1);floater(p.x,p.y-201,roster[p.char].name.toUpperCase()+' AWAKENED','#ffe5a3',23);msg(roster[p.char].name+' AWAKENED — 4 NEW MOVES + ULTIMATE!',2.1);}
+function awaken(p){if(committed(p)||p.meter<100||p.awake>0||p.stun>0||intermission>0||gameOver)return;commitMove(p,.85);p.meter=0;p.awake=22;p.ultUsed=false;p.ce=100;p.hp=Math.min(100,p.hp+14);p.inv=.8;p.cool=[0,0,0,0];frameShake(16);sparks(p.x,p.y-95,'#ffe8a2',105,530);for(let k=0;k<6;k++)arc(p.x,p.y-85,18+k*16,'#ffe39d',1+k*.1);floater(p.x,p.y-201,roster[p.char].name.toUpperCase()+' AWAKENED','#ffe5a3',23);msg(roster[p.char].name+' AWAKENED — 4 NEW MOVES + ULTIMATE!',2.1);}
 function ultimate(p){if(committed(p)||!p.awake||p.ultUsed||p.ce<45||p.stun>0||intermission>0||gameOver)return;ccEnergy(p.char==='gojo'?'purple':p.char==='sukuna'?'slashHeavy':p.char==='yuki'?'mass':p.char==='megumi'?'shadow':p.char==='mahito'?'soul':p.char==='yuta'?'rika':p.char==='hakari'?'jackpot':'cursed');commitMove(p,1.05);p.ultUsed=true;p.animKind='ultimate';p.animTime=1.0;p.animDuration=1.0;p.ce-=45;p.ultCD=18;p.pose=.85;frameShake(24);let q=other(p);
  if(p.char==='gojo'){projectile(p,'purple200',550,69,65,{life:3.6,penetrate:true,color:'#d7a3ff'});for(let k=0;k<12;k++)arc(p.x+p.dir*16*k,p.y-76,8+k*3,k%2?'#9bc5ff':'#de9bff',1.2);msg('200% HOLLOW PURPLE!',2.1);}
  if(p.char==='sukuna'){zone(p,'furnace',q.x,FLOOR-55,250,1.35,2.3,64);for(let k=0;k<100;k++)sparks(q.x+random(-250,250),FLOOR-random(25,265),'#ff8e45',1,200);msg('FURNACE — OPEN!  TAKE COVER!',2.2);}
@@ -951,19 +1020,20 @@ function ultimate(p){if(committed(p)||!p.awake||p.ultUsed||p.ce<45||p.stun>0||in
 }
 // Domain casting is a separate, fully frozen cinematic phase. A rival can answer
 // the cast with their own Domain button before the veil seals.
-const DOMAIN_CAST_DURATION=1.72;
+const DOMAIN_CAST_DURATION=2.55;
 function domain(p){
  if(!p||!p.awake||p.domainObj||p.domainCD>0||p.ce<35||p.stun>0||intermission>0||gameOver||domainDuel||p.castingDomain)return;
  p.ce-=35;p.domainCD=29;p.castingDomain=true;
  p.animKind='domain';p.animTime=DOMAIN_CAST_DURATION;p.animDuration=DOMAIN_CAST_DURATION;p.pose=DOMAIN_CAST_DURATION;
  p.vx=0;p.vy=0;p.guard=false;p.inv=Math.max(p.inv,DOMAIN_CAST_DURATION+.3);
- if(!domainCast)ccEnergy('domain');if(!domainCast)domainCast={elapsed:0,duration:DOMAIN_CAST_DURATION,casters:[],origin:p.x};
+ ccPlayDomainCall(p.char);if(!domainCast)domainCast={elapsed:0,duration:DOMAIN_CAST_DURATION,casters:[],origin:p.x};
  domainCast.casters.push(p.id);
  frameShake(8);sparks(p.x,p.y-90,roster[p.char].secondary,32,190);
  msg(roster[p.char].name.toUpperCase()+' — DOMAIN EXPANSION',2.1);
 }
 function settleDomainCast(){
  const c=domainCast;if(!c)return;domainCast=null;
+ sfxPlay('heavy',.74,true); // Recorded expansion impact, no generic sci-fi spell
  for(const id of c.casters){const p=players[id];p.castingDomain=false;p.domainObj={remaining:11,total:11,tick:0,seq:++domainSeq,stacks:0,beasts:0};p.inv=Math.max(p.inv,.5);p.animTime=.3;}
  frameShake(22);
  for(const id of c.casters){const p=players[id];for(let j=0;j<7;j++)arc(p.x,p.y-85,35+j*28,roster[p.char].secondary,.7);}
@@ -999,8 +1069,8 @@ function drawDomainCast(){if(!domainCast)return;
   for(let k=0;k<4;k++){ctx.globalAlpha=(.25+.62*t)*(1-k*.15);ctx.beginPath();ctx.ellipse(0,0,29+k*19+ease*35,55+k*25+ease*42,Math.sin(t*5+k)*.22,0,Math.PI*2*(.2+.8*t));ctx.stroke();}
   ctx.restore();}
  ctx.textAlign='center';ctx.fillStyle='#fff';ctx.shadowBlur=20;ctx.shadowColor=color;
- ctx.font='900 26px system-ui';ctx.fillText(c.casters.length>1?'DUAL DOMAIN EXPANSION':'DOMAIN EXPANSION',W/2,70);
- ctx.font='600 15px system-ui';ctx.fillText(c.casters.length>1?'TWO VEILS COLLIDING':'THE VEIL IS FORMING...',W/2,98);
+ ctx.font='900 26px system-ui';ctx.fillText(c.casters.length>1?'DUAL DOMAIN EXPANSION':'RYŌIKI TENKAI',W/2,70);
+ ctx.font='700 15px system-ui';ctx.fillText(c.casters.length>1?'TWO VEILS COLLIDING':roster[players[c.casters[0]].char].domain.toUpperCase(),W/2,98);
  ctx.shadowBlur=0;ctx.restore();
 }
 // Domain tug-of-war: combat and ALL combat timers freeze, only the QTE advances.
@@ -2438,6 +2508,7 @@ function onlineConnect(mode,code=''){
   if(m.pressed){if(!down.has(key)){down.add(key);if(!paused){if(domainDuel)duelKey(key);else action(players[1],key);}}}
   else {down.delete(key);if(key===controls[1].black)players[1].yujiBFHold=0;}
  }
+ if(m.type==='domainAudio'&&onlineGuest()&&onlineStreaming&&typeof m.character==='string'){ccPlayDomainCall(m.character,true);return;}
  if(m.type==='finisherAudio'&&onlineGuest()&&onlineStreaming&&m.sound==='yujiSecret'){yujiFinalAudio(true);return;}
  if(m.type==='frame'&&onlineGuest()&&onlineStreaming){
   if(m.sequence<=onlineLastFrame)return;onlineLastFrame=m.sequence;
@@ -2476,5 +2547,5 @@ document.getElementById('comboTier').addEventListener('change',()=>{refreshCombo
 window.__cursedClashTest={getState:()=>({score:score.slice(),round,paused,gameOver,intermission,elapsed,domainCast:domainCast?{elapsed:domainCast.elapsed,casters:domainCast.casters.slice()}:null,domainDuel:domainDuel?{index:domainDuel.index,correct:domainDuel.correct,aiCorrect:domainDuel.aiCorrect,remaining:domainDuel.remaining,sequence:domainDuel.sequence.slice()}:null,finisher:cinematic?.variant||null,finisherRemaining:cinematic?.life||0,finisherBeat:cinematic?.beat||0,mode:pvp()?'pvp':'ai',error:document.getElementById('errors').textContent,players:players.map(p=>({char:p.char,x:p.x,y:p.y,hp:p.hp,meter:p.meter,awake:p.awake,domain:p.domainObj?.remaining||0,ultCD:p.ultCD,ultUsed:p.ultUsed,comboLock:p.comboLock,hitCount:p.hitCount,enderLock:p.enderLock,launchDrift:p.launchDrift,comboArt:p.comboScript?.name||null,comboTime:p.comboTime,hitOwner:p.hitOwner,linkUsed:p.linkUsed,linkCount:p.linkCount,stun:p.stun,burstCD:p.burstCD,bfHits:p.bfHits,queuedPunch:p.queuedPunch,skills:p.cool.slice()})),aiBlackFlashesThisRound:brain.bfUsed,comboTier:document.getElementById('comboTier').value,actorKinds:actors.map(a=>a.kind),activeZones:fields.map(f=>f.type),beams:beams.map(b=>b.type)}),trigger:(i,key)=>action(players[i],key),debugClash:()=>{players.forEach(p=>{p.meter=100;p.stun=0;p.ce=100;p.domainCD=0;p.domainObj=null;awaken(p);p.inv=0;});domain(players[0]);domain(players[1]);return !!domainCast||!!domainDuel;},debugSetup:(opts={})=>{const a=players[opts.attacker??0],b=other(a);a.x=350;b.x=425;a.y=b.y=FLOOR;a.vx=a.vy=b.vx=b.vy=0;a.dir=1;b.dir=-1;a.ce=100;b.ce=100;a.punchCD=0;b.punchCD=0;a.stun=b.stun=0;a.inv=b.inv=0;a.cool=[0,0,0,0];b.guard=false;brain.guard=false;brain.breath=2;brain.decision=1;return true;},testKO:(i)=>damage(players[i],players[1-i],200,0,{unblockable:true,pierce:true})};
 newMatch();paused=true;requestAnimationFrame(loop);
 })();
-</script><div id="sfxControls" style="position:fixed;right:12px;bottom:12px;z-index:510;background:#0c1025e8;color:#fff;border:1px solid #68739b;border-radius:10px;padding:9px 11px;font:12px system-ui;display:flex;align-items:center;gap:8px"><button id="sfxToggle" onclick="toggleGameSfx()" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:7px;cursor:pointer">🔊 SFX ON</button><label>Volume <input aria-label="Sound effects volume" type="range" min="0" max="100" value="58" oninput="setGameSfxVolume(this.value)" style="width:85px;vertical-align:middle"></label><select aria-label="Impact sound style" onchange="ccSetStyle(this.value)" style="background:#17213d;color:#fff;border:1px solid #66759d;border-radius:5px;padding:4px"><option value="cinematic">Cinematic impacts</option><option value="tight">Fast / crisp</option></select><button onclick="ccPreview('hit')" title="Preview M1 punch" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Punch</button><button onclick="ccPreview('blackflash')" title="Preview Black Flash" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ BF</button><button onclick="ccPreview('blue')" title="Preview Blue recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Blue</button><button onclick="ccPreview('red')" title="Preview Red recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Red</button><button onclick="ccPreview('purple')" title="Preview Purple recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Purple</button><button onclick="ccPreview('slash')" title="Preview Dismantle recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Dismantle</button><span id="ccAudioStatus" style="font-size:10px;opacity:.72">Sounds loading...</span><span style="font-size:10px;opacity:.68" title="JJK sounds are fan uploads; check rights before public redistribution">JJK: <a href="https://www.myinstants.com/en/instant/gojo-lapse-blue-19384/" target="_blank" rel="noopener" style="color:#8cc8ff">Blue</a> · <a href="https://www.myinstants.com/en/instant/gojo-reversal-red-90179/" target="_blank" rel="noopener" style="color:#ff9999">Red</a> · <a href="https://www.myinstants.com/en/instant/hollow-purple-no-voice-56769/" target="_blank" rel="noopener" style="color:#d4a1ff">Purple</a></span></div><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
+</script><div id="sfxControls" style="position:fixed;right:12px;bottom:12px;z-index:510;background:#0c1025e8;color:#fff;border:1px solid #68739b;border-radius:10px;padding:9px 11px;font:12px system-ui;display:flex;align-items:center;gap:8px"><button id="sfxToggle" onclick="toggleGameSfx()" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:7px;cursor:pointer">🔊 SFX ON</button><label>Volume <input aria-label="Sound effects volume" type="range" min="0" max="100" value="58" oninput="setGameSfxVolume(this.value)" style="width:85px;vertical-align:middle"></label><select aria-label="Impact sound style" onchange="ccSetStyle(this.value)" style="background:#17213d;color:#fff;border:1px solid #66759d;border-radius:5px;padding:4px"><option value="cinematic">Cinematic impacts</option><option value="tight">Fast / crisp</option></select><button onclick="ccPreview('hit')" title="Preview M1 punch" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Punch</button><button onclick="ccPreview('blackflash')" title="Preview Black Flash" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ BF</button><button onclick="ccPreview('blue')" title="Preview Blue recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Blue</button><button onclick="ccPreview('red')" title="Preview Red recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Red</button><button onclick="ccPreview('purple')" title="Preview Purple recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Purple</button><button onclick="ccPreview('slash')" title="Preview Dismantle recording" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Dismantle</button><button onclick="ccPreviewDomain('gojo')" title="Preview Gojo domain voice; fan-uploaded sample" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Gojo Domain</button><button onclick="ccPreviewDomain('sukuna')" title="Preview Sukuna domain voice; fan-uploaded sample" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Sukuna Domain</button><button onclick="ccPreviewDomain('mahito')" title="Preview Mahito domain voice; fan-uploaded sample" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Mahito Domain</button><button onclick="ccPreviewDomain('hakari')" title="Preview Hakari domain voice; fan-uploaded sample" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Hakari Domain</button><button onclick="ccPreviewDomain('yuji')" title="Preview Yuji domain voice; fan-uploaded sample" style="color:white;background:#283455;border:1px solid #64729c;border-radius:6px;padding:6px">▶ Yuji Domain</button><span style="font-size:11px;opacity:.8">Custom domain voice:</span><select id="ccVoiceCharacter" title="Choose a fighter for your own licensed/recorded domain call" style="background:#202b45;color:white;border:1px solid #64729c;border-radius:6px"><option value="gojo">Gojo</option><option value="sukuna">Sukuna</option><option value="megumi">Megumi</option><option value="mahito">Mahito</option><option value="yuji">Yuji</option><option value="yuta">Yuta</option><option value="hakari">Hakari</option><option value="yuki">Yuki</option></select><input type="file" accept="audio/*" aria-label="Import your own domain voice clip" onchange="ccLoadDomainFile(this)" style="font-size:11px;max-width:160px"><span id="ccVoiceStatus" style="font-size:10px;opacity:.75"></span><span id="ccAudioStatus" style="font-size:10px;opacity:.72">Sounds loading...</span><span style="font-size:10px;opacity:.68" title="JJK sounds are fan uploads; check rights before public redistribution">JJK: <a href="https://www.myinstants.com/en/instant/gojo-lapse-blue-19384/" target="_blank" rel="noopener" style="color:#8cc8ff">Blue</a> · <a href="https://www.myinstants.com/en/instant/gojo-reversal-red-90179/" target="_blank" rel="noopener" style="color:#ff9999">Red</a> · <a href="https://www.myinstants.com/en/instant/hollow-purple-no-voice-56769/" target="_blank" rel="noopener" style="color:#d4a1ff">Purple</a></span></div><div id="combatUpdateHelp" style="position:fixed;bottom:10px;left:10px;z-index:500;background:#0c1025df;color:#e9eeff;border:1px solid #68739b;border-radius:9px;padding:9px 12px;font:12px system-ui;pointer-events:none;max-width:380px"><b>COMBAT 2.0</b> · 4th M1: <b>F</b> = send · <b>W + F</b> = uppercut · <b>S + F</b> = down slam. Yuji: time <b>B</b> to chain up to 4 Black Flashes, then <b>one F</b>. Heavy hits ragdoll; some skills cannot hit grounded foes.</div>
 </body></html>
