@@ -2009,13 +2009,20 @@ function loop(ts){try{const dt=clamp((ts-lastTime)/1000||.016,0,.035);lastTime=t
  }else {tick(dt);draw();}
  if(onlineHost()&&onlineStreaming&&onlinePeer&&ts-onlineLastInput>50){onlineLastInput=ts;
   // Encode only host visual output; both clients see the identical combat and VFX result.
-  try{onlineSend({type:'frame',sequence:++onlineSequence,data:canvas.toDataURL('image/webp',.60)});}catch(e){console.warn('Frame encoding failed',e);}
+  try{
+   // Encode scaled frames to avoid oversized messages that would disconnect room sockets.
+   if(!onlineFrameCanvas){onlineFrameCanvas=document.createElement('canvas');onlineFrameCanvas.width=960;onlineFrameCanvas.height=540;onlineFrameContext=onlineFrameCanvas.getContext('2d',{alpha:false});}
+   onlineFrameContext.drawImage(canvas,0,0,onlineFrameCanvas.width,onlineFrameCanvas.height);
+   const encoded=onlineFrameCanvas.toDataURL('image/webp',.48);
+   if(encoded.length<2_400_000)onlineSend({type:'frame',sequence:++onlineSequence,data:encoded});
+  }catch(e){console.warn('Frame encoding failed',e);}
  }}catch(err){console.error('Cursed Clash runtime error:',err);const box=document.getElementById('errors');if(box)box.textContent='Recovered from game error: '+(err?.message||String(err));}finally{requestAnimationFrame(loop);}}
 const numpadMap={Numpad0:'np0',Numpad1:'np1',Numpad2:'np2',Numpad3:'np3',Numpad4:'np4',Numpad5:'np5',Numpad6:'np6',Numpad7:'np7',Numpad8:'np8',Numpad9:'np9',NumpadDecimal:'npdecimal',NumpadAdd:'npadd',NumpadSubtract:'npsubtract',NumpadEnter:'npenter'};
 function inputKey(e){return numpadMap[e.code]||e.key.toLowerCase();}
 
 // Single-simulation online mode: host alone updates physics, combat, domains and rounds.
 // Guest sends inputs; receives exactly the host-rendered frames (no independent simulation drift).
+let onlineFrameCanvas=null,onlineFrameContext=null;
 let onlineSocket=null,onlineRole=null,onlineRoom='',onlinePeer=false,onlineSequence=0,onlineLastFrame=0,onlineLastInput=0;
 let onlineGuestImage=new Image(),onlineGuestReady=false,onlineStreaming=false,onlineGuestChar='sukuna',onlineDecodedSequence=0;
 const $cc=id=>document.getElementById(id);
