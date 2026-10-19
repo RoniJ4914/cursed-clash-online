@@ -1,0 +1,12 @@
+{
+  "name": "cursed-clash-hakari-online",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cursed Clash room-based multiplayer server",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
