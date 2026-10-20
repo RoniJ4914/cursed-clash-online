@@ -2566,7 +2566,8 @@ function loop(ts){try{const dt=clamp((ts-lastTime)/1000||.016,0,.035);lastTime=t
   // No remote video. Render the host's authoritative state at the canvas's native resolution.
   if(onlineGuestReady){
    if(onlineLatestState){onlineApplyState(onlineLatestState);onlineLatestState=null;}
-   draw();
+   // Interpolate presentation positions only. Never change host combat authority.
+   onlineDrawInterpolated(ts);
   }else{
    ctx.fillStyle='#0a1020';ctx.fillRect(0,0,W,H);
    ctx.font='800 24px system-ui';ctx.fillStyle='#e4edff';ctx.textAlign='center';
@@ -2588,6 +2589,39 @@ let onlineSocket=null,onlineRole=null,onlineRoom='',onlinePeer=false,onlineSeque
 let onlineGuestImage=new Image(),onlineGuestReady=false,onlineStreaming=false,onlineGuestChar='sukuna',onlineDecodedSequence=0;
 // Snapshot protocol v1: plain JSON state, no image encoding or remote canvas blurring.
 let onlineLatestState=null;
+// Guest-side jitter buffer: the host simulates combat; we only smooth rendered positions.
+const ONLINE_RENDER_DELAY_MS=105;
+const onlinePositionHistory=[];
+function onlineRememberPositions(st, receivedAt){
+ if(!Array.isArray(st?.players)||st.players.length!==2)return;
+ const positions=st.players.map(p=>({x:Number(p.x),y:Number(p.y),dir:p.dir}));
+ if(positions.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y)))return;
+ onlinePositionHistory.push({at:receivedAt,positions});
+ while(onlinePositionHistory.length>12)onlinePositionHistory.shift();
+}
+function onlineDrawInterpolated(now){
+ if(!players||players.length!==2||onlinePositionHistory.length<2){draw();return;}
+ const target=now-ONLINE_RENDER_DELAY_MS;
+ let a=onlinePositionHistory[0],b=onlinePositionHistory[onlinePositionHistory.length-1];
+ for(let i=1;i<onlinePositionHistory.length;i++){
+  if(onlinePositionHistory[i].at>=target){a=onlinePositionHistory[i-1];b=onlinePositionHistory[i];break;}
+ }
+ const gap=b.at-a.at;
+ const blend=gap>0?Math.max(0,Math.min(1,(target-a.at)/gap)):1;
+ const saved=players.map(p=>({x:p.x,y:p.y}));
+ try{
+  for(let i=0;i<2;i++){
+   const prev=a.positions[i],next=b.positions[i];
+   // Treat teleports and dramatic cinematic displacements as instantaneous.
+   const distance=Math.hypot(next.x-prev.x,next.y-prev.y);
+   if(distance>175){players[i].x=next.x;players[i].y=next.y;}
+   else {players[i].x=prev.x+(next.x-prev.x)*blend;players[i].y=prev.y+(next.y-prev.y)*blend;}
+  }
+  draw();
+ }finally{
+  for(let i=0;i<2;i++){players[i].x=saved[i].x;players[i].y=saved[i].y;}
+ }
+}
 const onlineArrayNames=['particles','strokes','rings','projectiles','actors','fields','beams','texts','afterimages','combatFX','signatureFX','impactGlyphs','blackFlashScenes','yukiEffects'];
 function onlineCaptureState(){
  const arrays={};
@@ -2618,7 +2652,7 @@ const onlineHost=()=>onlineActive()&&onlineRole==='host';
 function onlineSend(data){if(onlineSocket&&onlineSocket.readyState===WebSocket.OPEN)onlineSocket.send(JSON.stringify(data));}
 function showGame(){document.body.classList.add('playing');$cc('ccMenu').classList.add('hidden');canvas.focus();}
 function showMenu(){document.body.classList.remove('playing','guestPlaying');$cc('ccMenu').classList.remove('hidden');}
-function closeOnline(){if(onlineSocket){onlineSocket.close();onlineSocket=null;}onlineRole=null;onlinePeer=false;onlineStreaming=false;onlineGuestReady=false;down.clear();}
+function closeOnline(){if(onlineSocket){onlineSocket.close();onlineSocket=null;}onlineRole=null;onlinePeer=false;onlineStreaming=false;onlineGuestReady=false;onlinePositionHistory.length=0;down.clear();}
 function onlineConnect(mode,code=''){
  closeOnline();onlineRole=mode;onlineRoom='';onlinePeer=false;$cc('ccRoom').textContent='';$cc('ccStartOnline').style.display='none';$cc('ccCopyInvite').style.display='none';
  if(location.protocol==='file:'){onlineStatus('Online requires a server. Run npm install and npm start, then open the localhost URL.');return;}
@@ -2641,7 +2675,7 @@ function onlineConnect(mode,code=''){
  if(m.type==='peerLeft'){onlinePeer=false;onlineStreaming=false;down.clear();onlineStatus(m.reason||'Other player disconnected. Match paused.');paused=true;showMenu();$cc('ccStartOnline').style.display='none';}
  if(m.type==='guestPick'&&onlineRole==='host'){onlineGuestChar=m.character;$cc('menuChar1').value=m.character;onlineStatus('Player 2 selected '+roster[m.character].name+'. Ready to start.');}
  if(m.type==='start'&&onlineRole==='guest'){
-  onlineStreaming=true;onlineGuestReady=false;onlineLastFrame=0;onlineDecodedSequence=0;onlineLatestState=null;
+  onlineStreaming=true;onlineGuestReady=false;onlineLastFrame=0;onlineDecodedSequence=0;onlineLatestState=null;onlinePositionHistory.length=0;
   document.getElementById('gameMode').value='online';
   document.getElementById('char0').value=m.characters[0];document.getElementById('char1').value=m.characters[1];
   showGame();document.body.classList.add('guestPlaying');$cc('ccRemoteWait').textContent='Synchronizing combat state…';
@@ -2656,7 +2690,7 @@ function onlineConnect(mode,code=''){
  if(m.type==='jackpotAudio'&&onlineGuest()&&onlineStreaming){if(m.action==='start')ccStartHakariMusic(true);else if(m.action==='stop')ccStopHakariMusic(false);return;}
  if(m.type==='state'&&onlineGuest()&&onlineStreaming){
   if(!Number.isSafeInteger(m.sequence)||m.sequence<=onlineLastFrame)return;
-  onlineLastFrame=m.sequence;onlineLatestState=m.data;
+  onlineLastFrame=m.sequence;onlineRememberPositions(m.data,performance.now());onlineLatestState=m.data;
   onlineGuestReady=true;document.body.classList.remove('guestPlaying');
  }
 
